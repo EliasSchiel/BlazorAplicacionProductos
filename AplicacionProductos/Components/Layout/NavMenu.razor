@@ -1,0 +1,50 @@
+@implements IDisposable
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<MudNavMenu>
+    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Inicio</MudNavLink>
+
+    @if (Auth.EstaLogueado)
+    {
+        <MudNavLink Href="productos" Icon="@Icons.Material.Filled.Inventory2">Productos</MudNavLink>
+        <MudNavLink Href="ventas" Icon="@Icons.Material.Filled.ShoppingCart">@(Auth.EsStaff ? "Ventas" : "Mis compras")</MudNavLink>
+        @if (Auth.EsStaff)
+        {
+            <MudNavLink Href="categorias" Icon="@Icons.Material.Filled.Category">Categorías</MudNavLink>
+            <MudNavLink Href="clientes" Icon="@Icons.Material.Filled.People">Clientes</MudNavLink>
+            <MudNavLink Href="ingresos" Icon="@Icons.Material.Filled.LocalShipping">Ingresos</MudNavLink>
+            <MudNavLink Href="reportes" Icon="@Icons.Material.Filled.Assessment">Reportes</MudNavLink>
+        }
+        @if (Auth.EsAdmin)
+        {
+            <MudNavLink Href="usuarios" Icon="@Icons.Material.Filled.ManageAccounts">Usuarios</MudNavLink>
+        }
+        <MudDivider Class="my-2" />
+        <MudNavLink Href="cuenta" Icon="@Icons.Material.Filled.Person">Mi cuenta</MudNavLink>
+        <MudNavLink OnClick="SalirAsync" Icon="@Icons.Material.Filled.Logout">Salir (@Auth.Username)</MudNavLink>
+    }
+    else
+    {
+        <MudNavLink Href="login" Icon="@Icons.Material.Filled.Login">Iniciar sesión</MudNavLink>
+        <MudNavLink Href="registro" Icon="@Icons.Material.Filled.PersonAdd">Crear cuenta</MudNavLink>
+    }
+</MudNavMenu>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.Cambio += OnCambio;          // el menu se redibuja cuando se inicia / cierra sesion
+        await Auth.InicializarAsync();
+    }
+
+    private void OnCambio() => InvokeAsync(StateHasChanged);
+
+    private async Task SalirAsync()
+    {
+        await Auth.LogoutAsync();
+        Nav.NavigateTo("/login");
+    }
+
+    public void Dispose() => Auth.Cambio -= OnCambio;
+}

@@ -1,0 +1,33 @@
+@page "/"
+@inject AuthService Auth
+
+<MudText Typo="Typo.h4" Class="mb-3">Productos</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (Auth.EstaLogueado)
+{
+    <MudText Class="mb-3">Hola, <strong>@Auth.Username</strong> (@Auth.Rol).</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="productos" Class="mr-2">Ver productos</MudButton>
+    @if (Auth.EsStaff)
+    {
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="reportes">Reportes</MudButton>
+    }
+}
+else
+{
+    <MudText Class="mb-3">Iniciá sesión para ver los productos.</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="login">Iniciar sesión</MudButton>
+}
+
+@code {
+    private bool listo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        listo = true;
+    }
+}
