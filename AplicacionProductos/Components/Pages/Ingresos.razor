@@ -195,6 +195,11 @@ else
             productos = (await ProductoSvc.GetPaginaAsync(1, 100))?.Items ?? new();
         }
         catch (ApiException ex) { error = ex.Message; }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar proveedores y productos.";
+            LogApp.Reportar(ex, "Ingresos.Inicio");
+        }
         await CargarHistorialAsync();
     }
 

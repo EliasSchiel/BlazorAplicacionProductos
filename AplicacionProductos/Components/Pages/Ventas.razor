@@ -1,4 +1,5 @@
 @page "/ventas"
+@page "/mis-compras"
 @using System.Globalization
 @inject AuthService Auth
 @inject VentaService VentaSvc
@@ -10,11 +11,14 @@
 
 <div class="d-flex justify-space-between align-center mb-3">
     <MudText Typo="Typo.h5">@(Auth.EsStaff ? "Ventas" : "Mis compras")</MudText>
-    @if (listo && !nuevaVisible)
+    @if (listo && !nuevaVisible && Auth.EsStaff)
     {
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="NuevaVenta">
-            @(Auth.EsStaff ? "Nueva venta" : "Comprar")
-        </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="NuevaVenta">Nueva venta</MudButton>
+    }
+    else if (listo && !Auth.EsStaff)
+    {
+        @* el cliente compra desde el catalogo + carrito *@
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Storefront" Href="catalogo">Ir al catálogo</MudButton>
     }
 </div>
 
@@ -105,8 +109,11 @@ else
                     <MudSelectItem T="int" Value="@m.IdMetodoPago">@m.Nombre</MudSelectItem>
                 }
             </MudSelect>
-            <MudTextField @bind-Value="numeroTarjeta" Label="Número de tarjeta (simulado)" Variant="Variant.Outlined"
-                          HelperText="Pago simulado: una tarjeta que termina en 0000 se rechaza." MaxLength="19" />
+            @if (PideTarjeta)
+            {
+                <MudTextField @bind-Value="numeroTarjeta" Label="Número de tarjeta (simulado)" Variant="Variant.Outlined" InputType="InputType.Telephone"
+                              HelperText="Pago simulado: 13 a 19 dígitos. Si termina en 0000 se rechaza." MaxLength="19" />
+            }
 
             @if (errorPago is not null)
             {
@@ -142,7 +149,10 @@ else
     }
     else if (pagina is null || pagina.Items.Count == 0)
     {
-        <MudText>No hay ventas para mostrar.</MudText>
+        <div class="estado-vacio">
+            <MudIcon Icon="@Icons.Material.Outlined.ReceiptLong" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">@(Auth.EsStaff ? "No hay ventas para mostrar" : "Todavía no hiciste compras")</MudText>
+        </div>
     }
     else
     {
@@ -163,6 +173,15 @@ else
                     <MudText Typo="Typo.caption" Color="Color.Secondary">
                         @(string.Join(", ", context.Detalles.Select(d => $"{d.ProductoNombre} x{d.Cantidad}")))
                     </MudText>
+                    @{ var aprobado = context.Pagos.LastOrDefault(p => p.Estado == "Aprobado"); }
+                    @if (aprobado is not null)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Pagó con @aprobado.MetodoPago · @aprobado.CodigoTransaccion</MudText>
+                    }
+                    else if (context.Pagos.Any(p => p.Estado == "Rechazado") && context.Estado == "Pendiente")
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Error">Último intento de pago rechazado</MudText>
+                    }
                 </MudTd>
                 <MudTd DataLabel="Estado"><MudText Color="ColorEstado(context.Estado)">@context.Estado</MudText></MudTd>
                 <MudTd DataLabel="Total">$ @context.Total.ToString("N2", Cultura)</MudTd>
@@ -235,6 +254,10 @@ else
 
     private VentaDto? aCancelar;
 
+    // El numero de tarjeta solo se pide para los metodos "Tarjeta de debito / credito"
+    private bool PideTarjeta => metodosPago.FirstOrDefault(m => m.IdMetodoPago == idMetodoPago)?.Nombre
+        .Contains("tarjeta", StringComparison.OrdinalIgnoreCase) == true;
+
     private static Color ColorEstado(string estado) => estado switch
     {
         "Pagada" => Color.Success,
@@ -305,6 +328,12 @@ else
         catch (ApiException ex)
         {
             error = ex.Message;
+            return;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar productos y clientes.";
+            LogApp.Reportar(ex, "Ventas.Nueva");
             return;
         }
         lineas = new();
@@ -400,6 +429,8 @@ else
         if (pagando is null) return;
         errorPago = null;
         if (idMetodoPago <= 0) { errorPago = "Elegí un método de pago."; return; }
+        var digitos = new string((numeroTarjeta ?? "").Where(char.IsDigit).ToArray());
+        if (PideTarjeta && digitos.Length is < 13 or > 19) { errorPago = "Ingresá un número de tarjeta válido (13 a 19 dígitos)."; return; }
 
         ocupado = true;
         try
@@ -407,7 +438,7 @@ else
             await VentaSvc.PagarAsync(pagando.IdVenta, new PagoRequest
             {
                 IdMetodoPago = idMetodoPago,
-                NumeroTarjeta = string.IsNullOrWhiteSpace(numeroTarjeta) ? null : numeroTarjeta.Trim()
+                NumeroTarjeta = PideTarjeta ? digitos : null
             });
             Snackbar.Add("Pago aprobado.", Severity.Success);
             pagando = null;

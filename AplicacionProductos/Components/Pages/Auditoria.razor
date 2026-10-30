@@ -1,0 +1,320 @@
+@page "/auditoria"
+@using System.Text.Json
+@inject AuthService Auth
+@inject AuditoriaService AuditoriaSvc
+@inject UsuarioService UsuarioSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" Class="mb-3">Auditoría y errores</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsAdmin)
+{
+    <MudAlert Severity="Severity.Warning">Solo el Admin puede ver la auditoría y el log de errores.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-3 mb-3">
+        <MudGrid Spacing="2">
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="Desde" @bind-Date="desde" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudDatePicker Label="Hasta" @bind-Date="hasta" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" />
+            </MudItem>
+            @if (pestana == 0)
+            {
+                <MudItem xs="6" sm="3">
+                    <MudSelect T="string" @bind-Value="entidad" Label="Entidad" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem T="string" Value="@("")">Todas</MudSelectItem>
+                        @foreach (var e in Entidades)
+                        {
+                            <MudSelectItem T="string" Value="@e">@e</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudSelect T="string" @bind-Value="accion" Label="Acción" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem T="string" Value="@("")">Todas</MudSelectItem>
+                        @foreach (var a in Acciones)
+                        {
+                            <MudSelectItem T="string" Value="@a">@a</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+            }
+            else
+            {
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="string" @bind-Value="origen" Label="Origen" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem T="string" Value="@("")">API y App</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("API")">API</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("App")">App</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            }
+        </MudGrid>
+        <div class="d-flex gap-2 mt-2">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.FilterAlt" OnClick="FiltrarAsync">Filtrar</MudButton>
+            <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="LimpiarAsync">Limpiar</MudButton>
+        </div>
+    </MudPaper>
+
+    <MudTabs Elevation="1" Rounded="true" ActivePanelIndex="pestana" ActivePanelIndexChanged="CambiarPestanaAsync" PanelClass="pt-3">
+        <MudTabPanel Text="Acciones" Icon="@Icons.Material.Filled.FactCheck">
+            @if (cargando)
+            {
+                <MudProgressLinear Indeterminate="true" />
+            }
+            else if (acciones is null || acciones.Items.Count == 0)
+            {
+                <MudText Class="pa-2">No hay registros para estos filtros.</MudText>
+            }
+            else
+            {
+                <MudTable Items="acciones.Items" Dense="true" Hover="true" T="AuditoriaDto" OnRowClick="FilaAccionClick">
+                    <HeaderContent>
+                        <MudTh>Fecha</MudTh>
+                        <MudTh>Acción</MudTh>
+                        <MudTh>Entidad</MudTh>
+                        <MudTh>Usuario</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Fecha">@context.Fecha.ToString("dd/MM/yyyy HH:mm:ss")</MudTd>
+                        <MudTd DataLabel="Acción"><MudChip T="string" Size="Size.Small" Color="ColorAccion(context.Accion)">@context.Accion</MudChip></MudTd>
+                        <MudTd DataLabel="Entidad">@context.Entidad @(string.IsNullOrEmpty(context.IdEntidad) ? "" : $"#{context.IdEntidad}")</MudTd>
+                        <MudTd DataLabel="Usuario">@NombreUsuario(context.IdUsuario)</MudTd>
+                    </RowTemplate>
+                    <ChildRowContent>
+                        @if (expandido == context.IdAuditoria)
+                        {
+                            <MudTr>
+                                <td colspan="4" class="pa-3">
+                                    @if (!string.IsNullOrEmpty(context.Ip))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">IP: @context.Ip</MudText>
+                                    }
+                                    <pre class="bloque-codigo">@JsonLindo(context.Detalle)</pre>
+                                </td>
+                            </MudTr>
+                        }
+                    </ChildRowContent>
+                </MudTable>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Tocá una fila para ver el detalle de los cambios.</MudText>
+                <div class="d-flex justify-center mt-2">
+                    <MudPagination Count="@Math.Max(acciones.TotalPages, 1)" Selected="paginaAcciones" SelectedChanged="CambiarPaginaAccionesAsync" Size="Size.Small" />
+                </div>
+            }
+        </MudTabPanel>
+
+        <MudTabPanel Text="Errores" Icon="@Icons.Material.Filled.BugReport">
+            @if (cargando)
+            {
+                <MudProgressLinear Indeterminate="true" />
+            }
+            else if (errores is null || errores.Items.Count == 0)
+            {
+                <MudText Class="pa-2">No hay errores registrados para estos filtros.</MudText>
+            }
+            else
+            {
+                <MudTable Items="errores.Items" Dense="true" Hover="true" T="LogErrorDto" OnRowClick="FilaErrorClick">
+                    <HeaderContent>
+                        <MudTh>Fecha</MudTh>
+                        <MudTh>Origen</MudTh>
+                        <MudTh>Mensaje</MudTh>
+                        <MudTh>Usuario</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Fecha">@context.Fecha.ToString("dd/MM/yyyy HH:mm:ss")</MudTd>
+                        <MudTd DataLabel="Origen">
+                            <MudChip T="string" Size="Size.Small" Color="@(context.Origen == "App" ? Color.Info : Color.Secondary)">@context.Origen</MudChip>
+                        </MudTd>
+                        <MudTd DataLabel="Mensaje">
+                            <span class="texto-cortado">@context.Mensaje</span>
+                            @if (!string.IsNullOrEmpty(context.Ruta))
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.MetodoHttp @context.Ruta</MudText>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="Usuario">@NombreUsuario(context.IdUsuario)</MudTd>
+                    </RowTemplate>
+                    <ChildRowContent>
+                        @if (expandido == context.IdLogError)
+                        {
+                            <MudTr>
+                                <td colspan="4" class="pa-3">
+                                    <MudText Typo="Typo.body2" Class="mb-1"><strong>@context.Mensaje</strong></MudText>
+                                    <pre class="bloque-codigo">@(context.Excepcion ?? "(sin detalle)")</pre>
+                                </td>
+                            </MudTr>
+                        }
+                    </ChildRowContent>
+                </MudTable>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">Tocá una fila para ver el detalle técnico.</MudText>
+                <div class="d-flex justify-center mt-2">
+                    <MudPagination Count="@Math.Max(errores.TotalPages, 1)" Selected="paginaErrores" SelectedChanged="CambiarPaginaErroresAsync" Size="Size.Small" />
+                </div>
+            }
+        </MudTabPanel>
+    </MudTabs>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+    }
+}
+
+@code {
+    private const int TamanoPagina = 15;
+
+    // Valores que registra la API (AppDbContext audita las altas/modificaciones/bajas de cada entidad)
+    private static readonly string[] Entidades =
+        { "Producto", "ProductoImagen", "Categoria", "Cliente", "Proveedor", "Ingreso", "DetalleIngreso", "Venta", "DetalleVenta", "Pago", "Usuario", "Reporte" };
+    private static readonly string[] Acciones = { "Alta", "Modificacion", "Baja", "Login", "LoginFallido", "EnvioReporte" };
+
+    private bool listo;
+    private bool cargando = true;
+    private string? error;
+    private int pestana;          // 0 = acciones, 1 = errores
+    private int? expandido;       // id de la fila abierta
+
+    private DateTime? desde;
+    private DateTime? hasta;
+    private string entidad = "";
+    private string accion = "";
+    private string origen = "";
+
+    private PagedResult<AuditoriaDto>? acciones;
+    private PagedResult<LogErrorDto>? errores;
+    private int paginaAcciones = 1;
+    private int paginaErrores = 1;
+    private Dictionary<int, string> usuarios = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        if (!Auth.EsAdmin) return;
+
+        // Para mostrar el nombre en vez del id (la auditoria guarda solo IdUsuario)
+        try
+        {
+            var lista = await UsuarioSvc.GetPaginaAsync(1, 200);
+            usuarios = lista?.Items.ToDictionary(u => u.IdUsuario, u => u.Username) ?? new();
+        }
+        catch (ApiException) { /* si falla, se muestra el id */ }
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        expandido = null;
+        try
+        {
+            if (pestana == 0)
+                acciones = await AuditoriaSvc.GetPaginaAsync(paginaAcciones, TamanoPagina, entidad, accion, desde, hasta);
+            else
+                errores = await AuditoriaSvc.GetErroresAsync(paginaErrores, TamanoPagina, origen, desde, hasta);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cargar la auditoría.";
+            LogApp.Reportar(ex, "Auditoria");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task CambiarPestanaAsync(int indice)
+    {
+        pestana = indice;
+        await CargarAsync();
+    }
+
+    private async Task FiltrarAsync()
+    {
+        paginaAcciones = paginaErrores = 1;
+        await CargarAsync();
+    }
+
+    private async Task LimpiarAsync()
+    {
+        desde = hasta = null;
+        entidad = accion = origen = "";
+        await FiltrarAsync();
+    }
+
+    private async Task CambiarPaginaAccionesAsync(int nueva)
+    {
+        paginaAcciones = nueva;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPaginaErroresAsync(int nueva)
+    {
+        paginaErrores = nueva;
+        await CargarAsync();
+    }
+
+    private void Alternar(int id) => expandido = expandido == id ? null : id;
+
+    private void FilaAccionClick(TableRowClickEventArgs<AuditoriaDto> e)
+    {
+        if (e.Item is not null) Alternar(e.Item.IdAuditoria);
+    }
+
+    private void FilaErrorClick(TableRowClickEventArgs<LogErrorDto> e)
+    {
+        if (e.Item is not null) Alternar(e.Item.IdLogError);
+    }
+
+    private string NombreUsuario(int? id)
+        => id is null ? "—" : usuarios.TryGetValue(id.Value, out var nombre) ? nombre : $"#{id}";
+
+    private static Color ColorAccion(string accion) => accion switch
+    {
+        "Alta" => Color.Success,
+        "Baja" => Color.Error,
+        "Modificacion" => Color.Info,
+        "LoginFallido" => Color.Warning,
+        _ => Color.Default
+    };
+
+    /// <summary>El detalle viene como JSON en una sola linea: se indenta para que se lea.</summary>
+    private static string JsonLindo(string? texto)
+    {
+        if (string.IsNullOrWhiteSpace(texto)) return "(sin detalle)";
+        try
+        {
+            using var doc = JsonDocument.Parse(texto);
+            return JsonSerializer.Serialize(doc.RootElement, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping   // muestra tildes tal cual
+            });
+        }
+        catch (JsonException)
+        {
+            return texto;
+        }
+    }
+}

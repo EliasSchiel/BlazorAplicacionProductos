@@ -1,0 +1,106 @@
+@using System.Globalization
+@implements IDisposable
+@inject AuthService Auth
+@inject CarritoService CarritoSvc
+@inject FavoritosService FavoritosSvc
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+@*
+    Tarjeta de producto de la tienda (sin ruta propia): la usan Catalogo, el Inicio y Favoritos.
+    Tocar la tarjeta abre el detalle; el corazon y el carrito tienen stopPropagation para no abrirlo.
+*@
+
+<div class="tarjeta @(Producto.Stock <= 0 ? "sin-stock" : "")" @onclick="VerDetalle">
+    <div class="tarjeta-imagen">
+        @if (!string.IsNullOrEmpty(Producto.ImagenPrincipalUrl))
+        {
+            <img src="@ApiConfig.ResolverUrl(Producto.ImagenPrincipalUrl)" alt="@Producto.Nombre" loading="lazy" />
+        }
+        else
+        {
+            <MudIcon Icon="@Icons.Material.Outlined.Image" Size="Size.Large" Color="Color.Secondary" />
+        }
+
+        @if (!Auth.EsStaff)
+        {
+            <button class="boton-favorito" @onclick="AlternarFavorito" @onclick:stopPropagation="true"
+                    aria-label="@(EsFavorito ? "Quitar de favoritos" : "Agregar a favoritos")">
+                <MudIcon Icon="@(EsFavorito ? Icons.Material.Filled.Favorite : Icons.Material.Outlined.FavoriteBorder)"
+                         Size="Size.Small" Style="@(EsFavorito ? "color:#F23D4F;" : "color:#555;")" />
+            </button>
+        }
+
+        @if (Producto.Stock <= 0)
+        {
+            <span class="etiqueta etiqueta-gris">Sin stock</span>
+        }
+        else if (Producto.Stock <= 5)
+        {
+            <span class="etiqueta etiqueta-naranja">Últimas @Producto.Stock</span>
+        }
+    </div>
+
+    <div class="tarjeta-cuerpo">
+        <div class="tarjeta-nombre">@Producto.Nombre</div>
+        <div class="tarjeta-pie">
+            <div class="tarjeta-precio">$ @Producto.Precio.ToString("N0", Cultura)</div>
+            @if (!Auth.EsStaff && Producto.Stock > 0)
+            {
+                <button class="boton-carrito @(EnCarrito > 0 ? "en-carrito" : "")" @onclick="Agregar" @onclick:stopPropagation="true"
+                        disabled="@(EnCarrito >= Producto.Stock)" aria-label="Agregar al carrito">
+                    @if (EnCarrito > 0)
+                    {
+                        <span class="cantidad-carrito">@EnCarrito</span>
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.AddShoppingCart" Size="Size.Small" />
+                    }
+                </button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ProductoDto Producto { get; set; } = default!;
+
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+
+    private bool EsFavorito => FavoritosSvc.EsFavorito(Producto.IdProducto);
+    private int EnCarrito => CarritoSvc.CantidadDe(Producto.IdProducto);
+
+    protected override void OnInitialized()
+    {
+        CarritoSvc.Cambio += Redibujar;
+        FavoritosSvc.Cambio += Redibujar;
+    }
+
+    private void VerDetalle() => Nav.NavigateTo($"/catalogo/{Producto.IdProducto}");
+
+    private void AlternarFavorito()
+    {
+        var queda = FavoritosSvc.Alternar(Producto.IdProducto);
+        Snackbar.Add(queda ? "Agregado a favoritos." : "Quitado de favoritos.", Severity.Normal);
+    }
+
+    private void Agregar()
+    {
+        if (EnCarrito >= Producto.Stock) return;
+        CarritoSvc.Agregar(Producto);
+        Snackbar.Add($"Agregaste \"{Producto.Nombre}\" al carrito.", Severity.Success, o =>
+        {
+            o.Action = "Ver carrito";
+            o.OnClick = _ => { Nav.NavigateTo("/carrito"); return Task.CompletedTask; };
+        });
+    }
+
+    private void Redibujar() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        CarritoSvc.Cambio -= Redibujar;
+        FavoritosSvc.Cambio -= Redibujar;
+    }
+}

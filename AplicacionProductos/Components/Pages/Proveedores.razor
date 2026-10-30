@@ -1,0 +1,306 @@
+@page "/proveedores"
+@inject AuthService Auth
+@inject ProveedorService ProveedorSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Proveedores</MudText>
+    @if (Auth.EsStaff && !formVisible)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Nuevo">Nuevo</MudButton>
+    }
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Warning">Solo Admin y Operador pueden administrar proveedores.</MudAlert>
+}
+else
+{
+    @if (formVisible)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">@(editandoId is null ? "Nuevo proveedor" : "Editar proveedor")</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="8">
+                    <MudTextField @bind-Value="form.RazonSocial" Label="Razón social" Variant="Variant.Outlined" MaxLength="150" />
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudTextField @bind-Value="form.Cuit" Label="CUIT (opcional)" Variant="Variant.Outlined" MaxLength="20"
+                                  HelperText="Ej: 30-12345678-9" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Email" Label="Email (opcional)" Variant="Variant.Outlined" InputType="InputType.Email" MaxLength="150" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Telefono" Label="Teléfono (opcional)" Variant="Variant.Outlined" MaxLength="30" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField @bind-Value="form.Direccion" Label="Dirección (opcional)" Variant="Variant.Outlined" MaxLength="200" />
+                </MudItem>
+            </MudGrid>
+
+            @if (error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+            }
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">
+                    @(editandoId is null ? "Agregar proveedor" : "Guardar cambios")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="CerrarForm">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    <div class="mb-2">
+        <MudTextField @bind-Value="busqueda" Label="Buscar por razón social" Variant="Variant.Outlined" Immediate="true"
+                      OnKeyDown="OnKeyDown" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                      OnAdornmentClick="BuscarAsync" />
+    </div>
+
+    @if (cargando)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (pagina is null || pagina.Items.Count == 0)
+    {
+        <MudText>No se encontraron proveedores.</MudText>
+    }
+    else
+    {
+        <MudTable Items="pagina.Items" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Proveedor</MudTh>
+                <MudTh>Contacto</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Proveedor">
+                    @context.RazonSocial
+                    @if (!string.IsNullOrWhiteSpace(context.Cuit))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">CUIT @context.Cuit</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Contacto">
+                    @context.Email
+                    @if (!string.IsNullOrWhiteSpace(context.Telefono))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Telefono</MudText>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(context.Direccion))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Direccion</MudText>
+                    }
+                </MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="() => Editar(context)" />
+                    @if (Auth.EsAdmin)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => aEliminar = context" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <div class="d-flex justify-center mt-3">
+            <MudPagination Count="@Math.Max(pagina.TotalPages, 1)" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" />
+        </div>
+    }
+
+    @if (aEliminar is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">
+            ¿Eliminar a <strong>@aEliminar.RazonSocial</strong>? Si tiene ingresos registrados, la API no lo permite.
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="EliminarAsync" Disabled="ocupado">Sí, eliminar</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => aEliminar = null">Cancelar</MudButton>
+            </div>
+        </MudAlert>
+    }
+    @if (error is not null && !formVisible)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+    }
+}
+
+@code {
+    private const int TamanoPagina = 10;
+
+    private PagedResult<ProveedorDto>? pagina;
+    private int paginaActual = 1;
+    private string busqueda = "";
+    private bool listo;
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    private bool formVisible;
+    private int? editandoId;
+    private ProveedorGuardarRequest form = new();
+    private ProveedorDto? aEliminar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        if (Auth.EsStaff) await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        try
+        {
+            pagina = await ProveedorSvc.GetPaginaAsync(paginaActual, TamanoPagina, busqueda);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar los proveedores.";
+            LogApp.Reportar(ex, "Proveedores");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+    private void Nuevo()
+    {
+        editandoId = null;
+        form = new ProveedorGuardarRequest();
+        error = null;
+        aEliminar = null;
+        formVisible = true;
+    }
+
+    private void Editar(ProveedorDto p)
+    {
+        editandoId = p.IdProveedor;
+        form = new ProveedorGuardarRequest
+        {
+            RazonSocial = p.RazonSocial, Cuit = p.Cuit, Email = p.Email,
+            Telefono = p.Telefono, Direccion = p.Direccion
+        };
+        error = null;
+        aEliminar = null;
+        formVisible = true;
+    }
+
+    private void CerrarForm()
+    {
+        formVisible = false;
+        editandoId = null;
+        error = null;
+    }
+
+    private static string? Limpiar(string? texto) => string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
+
+    private async Task GuardarAsync()
+    {
+        error = null;
+        // La API no valida este DTO, asi que se valida aca
+        if (string.IsNullOrWhiteSpace(form.RazonSocial)) { error = "La razón social es obligatoria."; return; }
+        if (!string.IsNullOrWhiteSpace(form.Email) && !form.Email.Contains('@')) { error = "Ingresá un email válido."; return; }
+
+        ocupado = true;
+        try
+        {
+            var datos = new ProveedorGuardarRequest
+            {
+                RazonSocial = form.RazonSocial.Trim(),
+                Cuit = Limpiar(form.Cuit),
+                Email = Limpiar(form.Email),
+                Telefono = Limpiar(form.Telefono),
+                Direccion = Limpiar(form.Direccion)
+            };
+            if (editandoId is null)
+            {
+                await ProveedorSvc.CrearAsync(datos);
+                Snackbar.Add("Proveedor creado.", Severity.Success);
+            }
+            else
+            {
+                await ProveedorSvc.ActualizarAsync(editandoId.Value, datos);
+                Snackbar.Add("Proveedor actualizado.", Severity.Success);
+            }
+            CerrarForm();
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo guardar el proveedor.";
+            LogApp.Reportar(ex, "Proveedores.Guardar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private async Task EliminarAsync()
+    {
+        if (aEliminar is null) return;
+        error = null;
+        ocupado = true;
+        try
+        {
+            await ProveedorSvc.EliminarAsync(aEliminar.IdProveedor);
+            Snackbar.Add("Proveedor eliminado.", Severity.Success);
+            aEliminar = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // 409: tiene ingresos
+            aEliminar = null;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo eliminar el proveedor.";
+            LogApp.Reportar(ex, "Proveedores.Eliminar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

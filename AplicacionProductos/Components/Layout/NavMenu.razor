@@ -1,28 +1,58 @@
 @implements IDisposable
 @inject AuthService Auth
+@inject CarritoService Carrito
 @inject NavigationManager Nav
 
-<MudNavMenu>
-    <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Inicio</MudNavLink>
-
-    @if (Auth.EstaLogueado)
+@*
+    Menu por rol (la API igual valida cada permiso; esto es para no mostrar lo que no corresponde):
+    - Sin sesion: inicio (tienda), catalogo, favoritos, carrito, ingresar, crear cuenta
+    - Cliente:    inicio (tienda), catalogo, favoritos, carrito, mis compras, mi perfil, mi cuenta
+    - Operador:   inicio, ventas, productos, categorias, ingresos, proveedores, clientes, reportes, mi cuenta
+    - Admin:      lo del Operador + usuarios y auditoria
+*@
+<MudNavMenu Class="py-2">
+    @if (Auth.EsStaff)
     {
+        <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Inicio</MudNavLink>
+
+        <MudText Typo="Typo.overline" Class="px-4 pt-3 d-block" Color="Color.Secondary">Comercial</MudText>
+        <MudNavLink Href="ventas" Icon="@Icons.Material.Filled.PointOfSale">Ventas</MudNavLink>
+        <MudNavLink Href="clientes" Icon="@Icons.Material.Filled.People">Clientes</MudNavLink>
+
+        <MudText Typo="Typo.overline" Class="px-4 pt-3 d-block" Color="Color.Secondary">Inventario</MudText>
         <MudNavLink Href="productos" Icon="@Icons.Material.Filled.Inventory2">Productos</MudNavLink>
-        <MudNavLink Href="ventas" Icon="@Icons.Material.Filled.ShoppingCart">@(Auth.EsStaff ? "Ventas" : "Mis compras")</MudNavLink>
-        @if (Auth.EsStaff)
-        {
-            <MudNavLink Href="categorias" Icon="@Icons.Material.Filled.Category">Categorías</MudNavLink>
-            <MudNavLink Href="clientes" Icon="@Icons.Material.Filled.People">Clientes</MudNavLink>
-            <MudNavLink Href="ingresos" Icon="@Icons.Material.Filled.LocalShipping">Ingresos</MudNavLink>
-            <MudNavLink Href="reportes" Icon="@Icons.Material.Filled.Assessment">Reportes</MudNavLink>
-        }
+        <MudNavLink Href="categorias" Icon="@Icons.Material.Filled.Category">Categorías</MudNavLink>
+        <MudNavLink Href="ingresos" Icon="@Icons.Material.Filled.LocalShipping">Ingresos</MudNavLink>
+        <MudNavLink Href="proveedores" Icon="@Icons.Material.Filled.Factory">Proveedores</MudNavLink>
+
+        <MudText Typo="Typo.overline" Class="px-4 pt-3 d-block" Color="Color.Secondary">Gestión</MudText>
+        <MudNavLink Href="reportes" Icon="@Icons.Material.Filled.Assessment">Reportes</MudNavLink>
         @if (Auth.EsAdmin)
         {
             <MudNavLink Href="usuarios" Icon="@Icons.Material.Filled.ManageAccounts">Usuarios</MudNavLink>
+            <MudNavLink Href="auditoria" Icon="@Icons.Material.Filled.FactCheck">Auditoría y errores</MudNavLink>
         }
-        <MudDivider Class="my-2" />
-        <MudNavLink Href="cuenta" Icon="@Icons.Material.Filled.Person">Mi cuenta</MudNavLink>
-        <MudNavLink OnClick="SalirAsync" Icon="@Icons.Material.Filled.Logout">Salir (@Auth.Username)</MudNavLink>
+    }
+    else
+    {
+        <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Inicio</MudNavLink>
+        <MudNavLink Href="catalogo" Icon="@Icons.Material.Filled.Storefront">Catálogo</MudNavLink>
+        <MudNavLink Href="favoritos" Icon="@Icons.Material.Filled.FavoriteBorder">Favoritos</MudNavLink>
+        <MudNavLink Href="carrito" Icon="@Icons.Material.Filled.ShoppingCart">
+            Carrito @(Carrito.CantidadTotal > 0 ? $"({Carrito.CantidadTotal})" : "")
+        </MudNavLink>
+        @if (Auth.EstaLogueado)
+        {
+            <MudNavLink Href="mis-compras" Icon="@Icons.Material.Filled.ReceiptLong">Mis compras</MudNavLink>
+            <MudNavLink Href="perfil" Icon="@Icons.Material.Filled.Badge">Mi perfil</MudNavLink>
+        }
+    }
+
+    <MudDivider Class="my-2" />
+    @if (Auth.EstaLogueado)
+    {
+        <MudNavLink Href="cuenta" Icon="@Icons.Material.Filled.Key">Mi cuenta</MudNavLink>
+        <MudNavLink OnClick="SalirAsync" Icon="@Icons.Material.Filled.Logout">Cerrar sesión</MudNavLink>
     }
     else
     {
@@ -35,6 +65,7 @@
     protected override async Task OnInitializedAsync()
     {
         Auth.Cambio += OnCambio;          // el menu se redibuja cuando se inicia / cierra sesion
+        Carrito.Cambio += OnCambio;       // y cuando cambia la cantidad del carrito
         await Auth.InicializarAsync();
     }
 
@@ -42,9 +73,13 @@
 
     private async Task SalirAsync()
     {
-        await Auth.LogoutAsync();
+        await Auth.LogoutAsync();         // el CarritoService escucha el logout y vacia el carrito
         Nav.NavigateTo("/login");
     }
 
-    public void Dispose() => Auth.Cambio -= OnCambio;
+    public void Dispose()
+    {
+        Auth.Cambio -= OnCambio;
+        Carrito.Cambio -= OnCambio;
+    }
 }

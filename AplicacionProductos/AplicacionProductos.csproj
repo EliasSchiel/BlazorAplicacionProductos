@@ -29,7 +29,7 @@
         <MauiXamlInflator>SourceGen</MauiXamlInflator>
 
         <!-- Display name -->
-        <ApplicationTitle>AplicacionProductos</ApplicationTitle>
+        <ApplicationTitle>SG Market</ApplicationTitle>
 
         <!-- App Identifier -->
         <ApplicationId>com.companyname.aplicacionproductos</ApplicationId>

@@ -1,0 +1,191 @@
+@page "/catalogo"
+@using System.Globalization
+@inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject CategoriaService CategoriaSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+@*
+    Catalogo publico (la API no pide token para leer productos). Comprar requiere iniciar sesion como Cliente.
+    Acepta filtros en la URL para los accesos del Inicio: /catalogo?categoria=3, /catalogo?busqueda=papel, /catalogo?orden=precio_asc
+*@
+
+<MudGrid Spacing="2" Class="mb-2">
+    <MudItem xs="12" md="6">
+        <MudTextField @bind-Value="busqueda" Placeholder="Buscar productos..." Variant="Variant.Outlined" Immediate="true"
+                      Margin="Margin.Dense" OnKeyDown="OnKeyDown" Adornment="Adornment.End"
+                      AdornmentIcon="@Icons.Material.Filled.Search" OnAdornmentClick="BuscarAsync" Clearable="true"
+                      OnClearButtonClick="BuscarAsync" />
+    </MudItem>
+    <MudItem xs="6" md="3">
+        <MudSelect T="int" Value="idCategoria" ValueChanged="CambiarCategoriaAsync" Label="Categoría" Variant="Variant.Outlined" Margin="Margin.Dense">
+            <MudSelectItem T="int" Value="0">Todas</MudSelectItem>
+            @foreach (var c in categorias)
+            {
+                <MudSelectItem T="int" Value="@c.IdCategoria">@c.Nombre</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="6" md="3">
+        <MudSelect T="string" Value="orden" ValueChanged="CambiarOrdenAsync" Label="Ordenar por" Variant="Variant.Outlined" Margin="Margin.Dense">
+            <MudSelectItem T="string" Value="@("recientes")">Más nuevos</MudSelectItem>
+            <MudSelectItem T="string" Value="@("precio_asc")">Menor precio</MudSelectItem>
+            <MudSelectItem T="string" Value="@("precio_desc")">Mayor precio</MudSelectItem>
+            <MudSelectItem T="string" Value="@("nombre")">Nombre</MudSelectItem>
+        </MudSelect>
+    </MudItem>
+</MudGrid>
+
+@if (Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">Estás viendo el catálogo como lo ve un cliente. Para vender usá la pantalla de Ventas.</MudAlert>
+}
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">
+        @error
+        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CargarAsync">Reintentar</MudButton>
+    </MudAlert>
+}
+
+@if (cargando)
+{
+    <MudGrid Spacing="2">
+        @for (var i = 0; i < 4; i++)
+        {
+            <MudItem xs="6" sm="4" md="3">
+                <MudCard Elevation="1">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="150px" />
+                    <MudCardContent>
+                        <MudSkeleton Width="80%" />
+                        <MudSkeleton Width="50%" Height="32px" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+else if (pagina is null || pagina.Items.Count == 0)
+{
+    @if (error is null)
+    {
+        <div class="estado-vacio">
+            <MudIcon Icon="@Icons.Material.Outlined.SearchOff" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">No encontramos productos</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Probá con otra búsqueda u otra categoría.</MudText>
+        </div>
+    }
+}
+else
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@pagina.TotalCount resultado(s)</MudText>
+    <MudGrid Spacing="2">
+        @foreach (var p in pagina.Items)
+        {
+            <MudItem xs="6" sm="4" md="3" @key="p.IdProducto">
+                <TarjetaProducto Producto="p" />
+            </MudItem>
+        }
+    </MudGrid>
+
+    @if (pagina.TotalPages > 1)
+    {
+        <div class="d-flex justify-center mt-4">
+            <MudPagination Count="pagina.TotalPages" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" Size="Size.Small" />
+        </div>
+    }
+}
+
+@code {
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+    private const int TamanoPagina = 12;
+
+    private PagedResult<ProductoDto>? pagina;
+    private List<CategoriaDto> categorias = new();
+    private string busqueda = "";
+    private int idCategoria;
+    private string orden = "recientes";
+    private int paginaActual = 1;
+    private bool cargando = true;
+    private string? error;
+
+    private string? ultimaUrl;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+
+        try { categorias = await CategoriaSvc.GetAsync(); }
+        catch (ApiException) { /* el filtro de categorias es opcional */ }
+    }
+
+    // Se ejecuta tambien al ir de /catalogo?categoria=1 a /catalogo?categoria=2 (mismo componente, otra URL)
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Nav.Uri == ultimaUrl) return;
+        ultimaUrl = Nav.Uri;
+
+        var query = System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query);
+        busqueda = query["busqueda"] ?? "";
+        idCategoria = int.TryParse(query["categoria"], out var cat) ? cat : 0;
+        orden = query["orden"] is "precio_asc" or "precio_desc" or "nombre" or "recientes" ? query["orden"]! : "recientes";
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        try
+        {
+            pagina = await ProductoSvc.GetPaginaAsync(paginaActual, TamanoPagina, busqueda, idCategoria,
+                soloDisponibles: false, orden: orden);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cargar el catálogo.";
+            LogApp.Reportar(ex, "Catalogo");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    private async Task CambiarCategoriaAsync(int valor)
+    {
+        idCategoria = valor;
+        await BuscarAsync();
+    }
+
+    private async Task CambiarOrdenAsync(string valor)
+    {
+        orden = valor;
+        await BuscarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+}

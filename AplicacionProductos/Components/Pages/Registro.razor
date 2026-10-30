@@ -47,7 +47,14 @@
 </MudPaper>
 
 @code {
+    // A donde volver despues de entrar (ej: /checkout cuando el carrito pide iniciar sesion). Se lee del query string a mano:
+    // [SupplyParameterFromQuery] no esta garantizado en Blazor Hybrid.
+    private string? Volver => System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query)["volver"];
+
     private RegistroClienteRequest datos = new();
+
+    // Solo rutas internas; por defecto el cliente nuevo arranca en la portada de la tienda
+    private string Destino => !string.IsNullOrEmpty(Volver) && Volver.StartsWith('/') && !Volver.StartsWith("//") ? Volver : "/";
     private string repetir = "";
     private string? error;
     private bool cargando;
@@ -55,7 +62,7 @@
     protected override async Task OnInitializedAsync()
     {
         await Auth.InicializarAsync();
-        if (Auth.EstaLogueado) Nav.NavigateTo("/productos");
+        if (Auth.EstaLogueado) Nav.NavigateTo(Destino);
     }
 
     private string? Validar()
@@ -81,7 +88,7 @@
             datos.Nombre = datos.Nombre.Trim();
             datos.Apellido = datos.Apellido.Trim();
             await Auth.RegistrarAsync(datos);       // la API devuelve el token: queda logueado
-            Nav.NavigateTo("/productos");
+            Nav.NavigateTo(Destino);
         }
         catch (ApiException ex)
         {

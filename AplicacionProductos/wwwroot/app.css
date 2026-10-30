@@ -1,6 +1,7 @@
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    --maui-status-bar-safe-area-background: rgb(3, 23, 62);
+    /* franja de la barra de estado (iOS / Android edge-to-edge): oscura para que se lean los iconos blancos */
+    --maui-status-bar-safe-area-background: #333333;
 }
 
 a, .btn-link {
@@ -93,4 +94,581 @@ h1:focus {
 
 .flex-column, .navbar-brand {
     padding-left: env(safe-area-inset-left, 0px);
+}
+
+/* ================= Estilos propios de la app (MudBlazor hace el resto) ================= */
+
+/* El contenido no queda tapado por la barra de gestos de Android / iPhone */
+.contenido {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.titulo-app {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.texto-cortado {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.text-nowrap {
+    white-space: nowrap;
+}
+
+.precio {
+    font-weight: 500;
+    color: #333;
+}
+
+/* Mensaje centrado para listas vacias (catalogo sin resultados, carrito vacio, etc.) */
+.estado-vacio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: .25rem;
+    padding: 3rem 1rem;
+}
+
+/* ---------- Catalogo ---------- */
+.producto-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: box-shadow .15s ease;
+}
+
+    .producto-card:hover {
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .15) !important;
+    }
+
+    .producto-card .mud-card-content {
+        flex-grow: 1;
+    }
+
+.producto-imagen {
+    aspect-ratio: 1 / 1;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid #eee;
+    overflow: hidden;
+}
+
+    .producto-imagen img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;   /* la foto entera, sin recortar */
+        padding: 8px;
+    }
+
+/* Nombre en 2 lineas como maximo */
+.producto-nombre {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+}
+
+/* ---------- Detalle de producto ---------- */
+.detalle-imagen {
+    aspect-ratio: 4 / 3;
+    max-height: 420px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+    .detalle-imagen img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+.miniaturas {
+    overflow-x: auto;
+}
+
+    .miniaturas img {
+        width: 64px;
+        height: 64px;
+        object-fit: cover;
+        border: 2px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+        .miniaturas img.seleccionada {
+            border-color: #3483FA;
+        }
+
+/* ---------- Carrito ---------- */
+.carrito-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 8px;
+    border-bottom: 1px solid #eee;
+}
+
+    .carrito-item:last-child {
+        border-bottom: none;
+    }
+
+.carrito-imagen {
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+    .carrito-imagen img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+/* ---------- Inicio (personal) ---------- */
+.acceso-rapido {
+    cursor: pointer;
+    text-align: center;
+    height: 100%;
+    transition: box-shadow .15s ease;
+}
+
+    .acceso-rapido:hover {
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .15) !important;
+    }
+
+/* ---------- Auditoria ---------- */
+.bloque-codigo {
+    background: #f6f8fa;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: .75rem;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+/* ---------- Celular ---------- */
+@media (max-width: 599px) {
+    /* Tablas apiladas de MudBlazor: menos aire para que entren en pantalla */
+    .mud-table-dense .mud-table-cell {
+        padding: 6px 8px !important;
+    }
+
+    .producto-card .mud-button-root {
+        font-size: .75rem;
+    }
+
+    h5.mud-typography-h5 {
+        font-size: 1.3rem;
+    }
+}
+
+/* ================= Tienda "SG Market" ================= */
+
+/* ---------- Tarjeta de producto (TarjetaProducto.razor) ---------- */
+.tarjeta {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08);
+    overflow: hidden;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: box-shadow .15s ease, transform .15s ease;
+}
+
+    .tarjeta:hover {
+        box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
+        transform: translateY(-2px);
+    }
+
+    .tarjeta.sin-stock .tarjeta-imagen img {
+        opacity: .5;
+    }
+
+.tarjeta-imagen {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: #f7f7f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+    .tarjeta-imagen img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        padding: 10px;
+        mix-blend-mode: multiply;   /* las fotos con fondo blanco se funden con el gris */
+    }
+
+.boton-favorito {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .9);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.etiqueta {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    font-size: .7rem;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+
+.etiqueta-naranja {
+    background: #FF7733;
+    color: #fff;
+}
+
+.etiqueta-gris {
+    background: #737373;
+    color: #fff;
+}
+
+.tarjeta-cuerpo {
+    padding: 10px 12px 12px;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.tarjeta-nombre {
+    font-size: .85rem;
+    line-height: 1.3;
+    color: #333;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+}
+
+.tarjeta-pie {
+    margin-top: auto;
+    padding-top: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+}
+
+.tarjeta-precio {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #222;
+}
+
+.boton-carrito {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border: none;
+    border-radius: 50%;
+    background: #FFE600;
+    color: #333;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform .1s ease;
+}
+
+    .boton-carrito:active {
+        transform: scale(.9);
+    }
+
+    .boton-carrito.en-carrito {
+        background: #3483FA;
+        color: #fff;
+    }
+
+    .boton-carrito:disabled {
+        opacity: .5;
+        cursor: default;
+    }
+
+.cantidad-carrito {
+    font-weight: 700;
+    font-size: .85rem;
+}
+
+/* ---------- Portada de la tienda (InicioTienda.razor) ---------- */
+.buscador-tienda .mud-input-outlined {
+    background: #fff;
+    border-radius: 24px;
+}
+
+    .buscador-tienda .mud-input-outlined-border {
+        border-radius: 24px;
+    }
+
+.envio-a {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: .85rem;
+    color: #333;
+}
+
+.fila-categorias {
+    display: flex;
+    gap: 14px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+}
+
+    .fila-categorias::-webkit-scrollbar {
+        display: none;
+    }
+
+.categoria-circulo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 72px;
+    flex-shrink: 0;
+    cursor: pointer;
+    text-align: center;
+    font-size: .75rem;
+    color: #333;
+}
+
+    .categoria-circulo .circulo {
+        width: 58px;
+        height: 58px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #333;
+        transition: transform .15s ease;
+    }
+
+    .categoria-circulo:hover .circulo {
+        transform: scale(1.06);
+    }
+
+    .categoria-circulo span {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+
+.banner-tienda {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+    padding: 20px;
+    background: linear-gradient(120deg, #FFE600 0%, #FFF38A 60%, #FFE600 100%);
+    display: flex;
+    align-items: center;
+    min-height: 150px;
+}
+
+.banner-texto {
+    position: relative;
+    z-index: 1;
+    max-width: 70%;
+}
+
+.banner-chip {
+    display: inline-block;
+    background: #333;
+    color: #FFE600;
+    font-size: .7rem;
+    font-weight: 600;
+    padding: 2px 10px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+.banner-titulo {
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #222;
+}
+
+.banner-sub {
+    font-size: .85rem;
+    color: #444;
+    margin: 6px 0 12px;
+}
+
+.banner-boton {
+    background: #1F2A44 !important;
+    color: #fff !important;
+    border-radius: 20px !important;
+}
+
+.banner-icono {
+    position: absolute;
+    right: -10px;
+    bottom: -18px;
+    font-size: 9rem !important;
+    width: 9rem !important;
+    height: 9rem !important;
+    color: rgba(52, 131, 250, .25);
+}
+
+/* Fila horizontal de productos (se desliza con el dedo) */
+.fila-productos {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 2px 2px 8px;
+    scroll-snap-type: x mandatory;
+}
+
+.fila-item {
+    width: 160px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
+}
+
+/* ---------- Barra inferior (BarraInferior.razor), solo celular ---------- */
+.barra-inferior {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1200;
+    display: flex;
+    background: #fff;
+    border-top: 1px solid #e6e6e6;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+    .barra-inferior a {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 6px 0 4px;
+        font-size: .7rem;
+        color: #737373;
+        text-decoration: none;
+    }
+
+        .barra-inferior a.activo {
+            color: #3483FA;
+            font-weight: 600;
+        }
+
+.icono-con-badge {
+    position: relative;
+    display: inline-flex;
+}
+
+.badge-chico {
+    position: absolute;
+    top: -4px;
+    right: -10px;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 9px;
+    background: #F23D4F;
+    color: #fff;
+    font-size: .65rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Lugar para que la barra no tape el final de la pagina */
+.contenido.con-barra-inferior {
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+/* En pantallas grandes no hace falta la barra inferior: esta el menu lateral fijo */
+@media (min-width: 960px) {
+    .barra-inferior {
+        display: none;
+    }
+
+    .contenido.con-barra-inferior {
+        padding-bottom: 1rem !important;
+    }
+}
+
+/* En el celular el corazon de arriba sobra: ya esta en la barra inferior */
+@media (max-width: 959px) {
+    .ocultar-celular {
+        display: none !important;
+    }
+}
+
+/* Pantalla de carga antes de que arranque Blazor */
+.cargando-app {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-family: Roboto, Helvetica, Arial, sans-serif;
+    color: #555;
+}
+
+    .cargando-app .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e0e0e0;
+        border-top-color: #3483FA;
+        border-radius: 50%;
+        animation: girar 0.9s linear infinite;
+    }
+
+@keyframes girar {
+    to {
+        transform: rotate(360deg);
+    }
 }

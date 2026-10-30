@@ -1,0 +1,174 @@
+@inject ProductoService ProductoSvc
+@inject CategoriaService CategoriaSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+@*
+    Portada de la tienda (cliente o sin sesion). No tiene ruta propia: la muestra Home.razor en "/".
+    Todo sale de datos reales de la API: categorias, los mas nuevos y los de menor precio.
+*@
+
+@* ---------- Buscador + envio ---------- *@
+<div class="buscador-tienda mb-2">
+    <MudTextField @bind-Value="busqueda" Placeholder="Buscar productos..." Variant="Variant.Outlined" Margin="Margin.Dense"
+                  Immediate="true" OnKeyDown="OnKeyDown" Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                  OnAdornmentClick="Buscar" />
+</div>
+<div class="envio-a mb-3">
+    <MudIcon Icon="@Icons.Material.Filled.LocationOn" Size="Size.Small" />
+    <span>Envíos a <strong>Santa Rosa, La Pampa</strong></span>
+</div>
+
+@* ---------- Categorias en circulos ---------- *@
+@if (categorias.Count > 0)
+{
+    <div class="fila-categorias mb-4">
+        @for (var i = 0; i < categorias.Count; i++)
+        {
+            var c = categorias[i];
+            var color = Pasteles[i % Pasteles.Length];
+            <div class="categoria-circulo" @key="c.IdCategoria" @onclick="() => IrACategoria(c.IdCategoria)">
+                <div class="circulo" style="background:@color;">
+                    <MudIcon Icon="@IconoCategoria(c.Nombre)" />
+                </div>
+                <span>@c.Nombre</span>
+            </div>
+        }
+    </div>
+}
+
+@* ---------- Banner ---------- *@
+<div class="banner-tienda mb-5">
+    <div class="banner-texto">
+        <span class="banner-chip">SG Market</span>
+        <div class="banner-titulo">Todo lo que necesitás, en un solo lugar.</div>
+        <div class="banner-sub">Comprá online y pagá con tarjeta, Mercado Pago o transferencia.</div>
+        <MudButton Variant="Variant.Filled" Size="Size.Small" Class="banner-boton" Href="catalogo"
+                   EndIcon="@Icons.Material.Filled.ArrowForward">Ver productos</MudButton>
+    </div>
+    <MudIcon Icon="@Icons.Material.Filled.ShoppingBag" Class="banner-icono" />
+</div>
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">
+        @error
+        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CargarAsync">Reintentar</MudButton>
+    </MudAlert>
+}
+
+@* ---------- Filas de productos ---------- *@
+@foreach (var fila in Filas)
+{
+    <div class="d-flex justify-space-between align-center mb-2">
+        <MudText Typo="Typo.h6"><strong>@fila.Titulo</strong></MudText>
+        <MudLink Href="@fila.VerTodos" Typo="Typo.body2" Underline="Underline.None">Ver todos →</MudLink>
+    </div>
+
+    @if (cargando)
+    {
+        <div class="fila-productos mb-5">
+            @for (var i = 0; i < 4; i++)
+            {
+                <div class="fila-item"><MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="230px" /></div>
+            }
+        </div>
+    }
+    else if (fila.Productos.Count == 0)
+    {
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-5">Pronto vas a ver productos acá.</MudText>
+    }
+    else
+    {
+        <div class="fila-productos mb-5">
+            @foreach (var p in fila.Productos)
+            {
+                <div class="fila-item" @key="p.IdProducto">
+                    <TarjetaProducto Producto="p" />
+                </div>
+            }
+        </div>
+    }
+}
+
+@code {
+    private record Fila(string Titulo, string VerTodos, List<ProductoDto> Productos);
+
+    // Colores suaves para el fondo de cada categoria (se repiten si hay muchas)
+    private static readonly string[] Pasteles = { "#FFF3B0", "#D6E9FF", "#FFD9E0", "#D5F5E3", "#E8DCFF", "#FFE2CC" };
+
+    private string busqueda = "";
+    private List<CategoriaDto> categorias = new();
+    private List<ProductoDto> novedades = new();
+    private List<ProductoDto> baratos = new();
+    private bool cargando = true;
+    private string? error;
+
+    private IEnumerable<Fila> Filas => new[]
+    {
+        new Fila("Novedades", "catalogo?orden=recientes", novedades),
+        new Fila("Precios bajos", "catalogo?orden=precio_asc", baratos)
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { categorias = await CategoriaSvc.GetAsync(); }
+        catch (ApiException) { /* sin categorias igual se muestra el resto */ }
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        try
+        {
+            novedades = (await ProductoSvc.GetPaginaAsync(1, 10, soloDisponibles: true, orden: "recientes"))?.Items ?? new();
+            baratos = (await ProductoSvc.GetPaginaAsync(1, 10, soloDisponibles: true, orden: "precio_asc"))?.Items ?? new();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar los productos.";
+            LogApp.Reportar(ex, "InicioTienda");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void Buscar()
+    {
+        var texto = busqueda.Trim();
+        Nav.NavigateTo(texto.Length == 0 ? "/catalogo" : $"/catalogo?busqueda={Uri.EscapeDataString(texto)}");
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") Buscar();
+    }
+
+    private void IrACategoria(int id) => Nav.NavigateTo($"/catalogo?categoria={id}");
+
+    /// <summary>Icono segun palabras del nombre de la categoria (las categorias las crea el Admin).</summary>
+    private static string IconoCategoria(string nombre)
+    {
+        var n = nombre.ToLowerInvariant();
+        if (n.Contains("papel") || n.Contains("cartul") || n.Contains("hoja")) return Icons.Material.Filled.Description;
+        if (n.Contains("escrit") || n.Contains("lapic") || n.Contains("birom") || n.Contains("marcad")) return Icons.Material.Filled.Edit;
+        if (n.Contains("escolar") || n.Contains("cuadern") || n.Contains("libr")) return Icons.Material.Filled.MenuBook;
+        if (n.Contains("arte") || n.Contains("pint") || n.Contains("manual")) return Icons.Material.Filled.Palette;
+        if (n.Contains("ofic") || n.Contains("archiv") || n.Contains("carpet")) return Icons.Material.Filled.BusinessCenter;
+        if (n.Contains("tecno") || n.Contains("electr") || n.Contains("comput")) return Icons.Material.Filled.Devices;
+        if (n.Contains("ropa") || n.Contains("indum")) return Icons.Material.Filled.Checkroom;
+        if (n.Contains("hogar") || n.Contains("casa")) return Icons.Material.Filled.Home;
+        if (n.Contains("jugu")) return Icons.Material.Filled.Toys;
+        if (n.Contains("mochil") || n.Contains("bolso")) return Icons.Material.Filled.Backpack;
+        return Icons.Material.Filled.Category;
+    }
+}
