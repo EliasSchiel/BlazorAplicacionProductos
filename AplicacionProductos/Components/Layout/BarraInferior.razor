@@ -1,0 +1,66 @@
+@implements IDisposable
+@inject AuthService Auth
+@inject CarritoService CarritoSvc
+@inject FavoritosService FavoritosSvc
+@inject NavigationManager Nav
+
+@*
+    Barra de navegacion inferior estilo app de tienda. Solo para cliente / sin sesion,
+    y solo en pantallas chicas (el CSS la oculta desde 960px, donde ya esta el menu lateral fijo).
+*@
+
+<nav class="barra-inferior">
+    @foreach (var b in Botones)
+    {
+        <a href="@b.Ruta" class="@(EstaActivo(b) ? "activo" : "")">
+            <span class="icono-con-badge">
+                <MudIcon Icon="@b.Icono" />
+                @if (b.Contador > 0)
+                {
+                    <span class="badge-chico">@b.Contador</span>
+                }
+            </span>
+            <span class="texto">@b.Texto</span>
+        </a>
+    }
+</nav>
+
+@code {
+    private record Boton(string Texto, string Icono, string Ruta, int Contador = 0);
+
+    private IEnumerable<Boton> Botones => new[]
+    {
+        new Boton("Inicio", Icons.Material.Filled.Home, ""),
+        new Boton("Productos", Icons.Material.Filled.GridView, "catalogo"),
+        new Boton("Favoritos", Icons.Material.Filled.FavoriteBorder, "favoritos", FavoritosSvc.Cantidad),
+        new Boton("Carrito", Icons.Material.Filled.ShoppingCart, "carrito", CarritoSvc.CantidadTotal),
+        new Boton(Auth.EstaLogueado ? "Mi cuenta" : "Ingresar", Icons.Material.Filled.Person, Auth.EstaLogueado ? "perfil" : "login")
+    };
+
+    // "Inicio" solo se marca en la raiz; el resto, si la ruta actual empieza igual (ej: catalogo/5 marca Productos)
+    private bool EstaActivo(Boton b)
+    {
+        var actual = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0];
+        return b.Ruta.Length == 0 ? actual.Length == 0 : actual.StartsWith(b.Ruta, StringComparison.OrdinalIgnoreCase);
+    }
+
+    protected override void OnInitialized()
+    {
+        Auth.Cambio += Redibujar;
+        CarritoSvc.Cambio += Redibujar;
+        FavoritosSvc.Cambio += Redibujar;
+        Nav.LocationChanged += OnUbicacion;
+    }
+
+    private void Redibujar() => InvokeAsync(StateHasChanged);
+
+    private void OnUbicacion(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e) => Redibujar();
+
+    public void Dispose()
+    {
+        Auth.Cambio -= Redibujar;
+        CarritoSvc.Cambio -= Redibujar;
+        FavoritosSvc.Cambio -= Redibujar;
+        Nav.LocationChanged -= OnUbicacion;
+    }
+}

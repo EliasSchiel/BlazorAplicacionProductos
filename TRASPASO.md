@@ -17,9 +17,11 @@ Components/Pages/*.razor  ->  Services/*Service.cs  ->  Services/ApiClient.cs  -
 - `Services/AuthService.cs`: login / registro / logout. Guarda el token en `SecureStorage` (si no está disponible, queda en memoria). Expone `EstaLogueado`, `EsStaff`, `EsAdmin`, `Rol`, `Username`.
 - `Services/*Service.cs`: uno por tema (Producto, Categoria, Usuario, Cliente, Proveedor, Ingreso, Venta, Reporte, Perfil, Auditoria, Log). Solo arman la URL y llaman a `ApiClient`.
 - `Services/CarritoService.cs`: el carrito del cliente. No habla con la API: guarda los items en `Preferences` (clave `carrito`), avisa con el evento `Cambio` (contador del icono) y se vacía solo cuando la sesión pasa de abierta a cerrada (logout o 401) y al confirmar una compra. Se crea al arrancar en `MauiProgram` para que escuche el logout desde el principio.
+- `Services/FavoritosService.cs`: igual que el carrito pero solo guarda los ids de los productos con corazón (`Preferences`, clave `favoritos`). Se vacía al cerrar sesión. No usa la API.
 - `Services/LogService.cs`: manda los errores de la app a `POST api/Logs/app` (quedan en la tabla `LogErrores` con Origen = "App"). Los `catch` de cada pantalla lo usan, y `MauiProgram.cs` lo engancha a las excepciones no controladas.
 - `MauiProgram.cs`: registra un único `HttpClient` y todos los servicios como singleton.
 - `Components/Layout/`: `MainLayout` (proveedores de MudBlazor, tema, barra con icono del carrito y menú) y `NavMenu` (el menú cambia según el rol, ver abajo).
+- Componentes sin ruta: `Pages/TarjetaProducto.razor` (tarjeta con corazón y botón de carrito, la usan catálogo, portada y favoritos), `Pages/InicioTienda.razor` (portada, la muestra `Home`) y `Layout/BarraInferior.razor` (barra de abajo para cliente / sin sesión; el CSS la oculta desde 960 px de ancho).
 - `Config/TemaApp.cs`: tema de MudBlazor (paleta y bordes). Los estilos propios (tarjetas del catálogo, carrito, etc.) están al final de `wwwroot/app.css`.
 - Todas las páginas llaman a `Auth.InicializarAsync()` antes de decidir si redirigen a `/login`.
 
@@ -27,9 +29,10 @@ Components/Pages/*.razor  ->  Services/*Service.cs  ->  Services/ApiClient.cs  -
 
 | Ruta | Quién | Qué hace |
 |---|---|---|
-| `/` | todos | Staff: accesos rápidos y productos con stock bajo. Cliente o sin sesión: redirige a `/catalogo` |
+| `/` | todos | Staff: accesos rápidos y productos con stock bajo. Cliente o sin sesión: portada de la tienda "SG Market" (`InicioTienda.razor`): buscador, "Envíos a Santa Rosa, La Pampa", categorías en círculos, banner y filas "Novedades" y "Precios bajos" |
 | `/login`, `/registro` | público | Login; registro de cliente (la API devuelve el token: queda logueado). Aceptan `?volver=/ruta` (lo usa el carrito para volver al checkout) |
-| `/catalogo` | público | Catálogo tipo tienda: tarjetas con foto y precio, búsqueda, categoría, orden, "Agregar" al carrito |
+| `/catalogo` | público | Catálogo tipo tienda: tarjetas con foto y precio, búsqueda, categoría, orden, corazón y carrito. Acepta `?categoria=`, `?busqueda=` y `?orden=` (los usa la portada) |
+| `/favoritos` | público | Productos marcados con el corazón (trae precio y stock actuales de la API) |
 | `/catalogo/{id}` | público | Detalle: fotos, descripción, stock, cantidad, "Agregar al carrito" / "Comprar ahora" |
 | `/carrito` | público | Carrito: cantidades, eliminar, total. Al entrar refresca precio y stock desde la API. Para seguir pide iniciar sesión |
 | `/checkout` | Cliente | Crea la venta (`POST api/Ventas`) y la paga (`POST api/Ventas/{id}/pagar`). Si el pago se rechaza, se reintenta sobre la misma venta |
@@ -47,8 +50,9 @@ Components/Pages/*.razor  ->  Services/*Service.cs  ->  Services/ApiClient.cs  -
 | `/cuenta` | logueado | Cambiar la propia contraseña |
 
 ### Menú por rol (`NavMenu.razor`)
-- **Sin sesión:** Catálogo, Carrito, Iniciar sesión, Crear cuenta.
-- **Cliente:** Catálogo, Carrito, Mis compras, Mi perfil, Mi cuenta, Cerrar sesión.
+- **Sin sesión:** Inicio, Catálogo, Favoritos, Carrito, Iniciar sesión, Crear cuenta.
+- **Cliente:** Inicio, Catálogo, Favoritos, Carrito, Mis compras, Mi perfil, Mi cuenta, Cerrar sesión.
+- En el celular, cliente y sin sesión tienen además la barra inferior: Inicio, Productos, Favoritos, Carrito, Mi cuenta.
 - **Operador:** Inicio, Ventas, Clientes, Productos, Categorías, Ingresos, Proveedores, Reportes, Mi cuenta.
 - **Admin:** lo del Operador + Usuarios y Auditoría y errores.
 - El menú solo oculta: cada pantalla igual controla el rol y la API valida todos los permisos.
@@ -71,6 +75,6 @@ Components/Pages/*.razor  ->  Services/*Service.cs  ->  Services/ApiClient.cs  -
 - Android: `Platforms/Android/Resources/values/colors.xml` tiene los colores del tema (barra de estado oscura para que se lean los iconos).
 
 ## Estado de las pruebas
-- Probado a mano en Windows: login, productos (alta, edición, imagen), categorías.
-- Revisado contra el código de la API (rutas, verbos, DTOs, filtros y permisos coinciden): registro, usuarios, clientes, mi cuenta, ingresos, ventas.
-- **Escrito y revisado, pero sin compilar ni probar al momento del commit** (no se pudo compilar fuera de Visual Studio): catálogo, detalle, carrito, checkout, mis compras, perfil, proveedores, auditoría, tema y menú. Si algo no compila, empezar por esas pantallas (los puntos con más riesgo son APIs de MudBlazor: opciones del `Snackbar` con botón "Ver carrito", `MudTabs`, `ChildRowContent` de `MudTable`).
+- Probado a mano en Windows con los tres roles (Admin, Operador, Cliente): todas las pantallas, incluido el flujo de compra con pago rechazado y reintento, reportes PDF y por mail, y auditoría.
+- **Escrito pero sin probar al momento del commit:** rediseño "SG Market" (portada, tarjetas nuevas, favoritos, barra inferior).
+- Falta probar en Android.

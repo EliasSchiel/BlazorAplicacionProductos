@@ -4,11 +4,15 @@
 @inject LogService LogApp
 @inject NavigationManager Nav
 
-@* Inicio: el cliente (o quien no inicio sesion) va directo al catalogo; el personal ve accesos rapidos y alertas de stock *@
+@* Inicio: el cliente (o quien no inicio sesion) ve la portada de la tienda; el personal ve accesos rapidos y alertas de stock *@
 
 @if (!listo)
 {
     <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsStaff)
+{
+    <InicioTienda />
 }
 else
 {
@@ -84,12 +88,8 @@ else
     protected override async Task OnInitializedAsync()
     {
         await Auth.InicializarAsync();
-        if (!Auth.EsStaff)
-        {
-            Nav.NavigateTo("/catalogo", replace: true);
-            return;
-        }
         listo = true;
+        if (!Auth.EsStaff) return;   // la portada de la tienda carga sus propios datos
 
         try
         {

@@ -3,6 +3,7 @@
 @inject AuthService Auth
 @inject ProductoService ProductoSvc
 @inject CarritoService Carrito
+@inject FavoritosService FavoritosSvc
 @inject LogService LogApp
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -58,7 +59,15 @@ else
                 {
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@producto.CategoriaNombre</MudChip>
                 }
-                <MudText Typo="Typo.h5" Class="mt-1">@producto.Nombre</MudText>
+                <div class="d-flex align-start gap-2 mt-1">
+                    <MudText Typo="Typo.h5" Class="flex-grow-1">@producto.Nombre</MudText>
+                    @if (!Auth.EsStaff)
+                    {
+                        <MudIconButton Icon="@(FavoritosSvc.EsFavorito(producto.IdProducto) ? Icons.Material.Filled.Favorite : Icons.Material.Outlined.FavoriteBorder)"
+                                       Style="@(FavoritosSvc.EsFavorito(producto.IdProducto) ? "color:#F23D4F;" : "")"
+                                       OnClick="AlternarFavorito" aria-label="Favorito" />
+                    }
+                </div>
                 <MudText Typo="Typo.h4" Class="precio my-2">$ @producto.Precio.ToString("N2", Cultura)</MudText>
 
                 @if (producto.Stock <= 0)
@@ -178,6 +187,13 @@ else
             o.Action = "Ver carrito";
             o.OnClick = _ => { Nav.NavigateTo("/carrito"); return Task.CompletedTask; };
         });
+    }
+
+    private void AlternarFavorito()
+    {
+        if (producto is null) return;
+        var queda = FavoritosSvc.Alternar(producto.IdProducto);
+        Snackbar.Add(queda ? "Agregado a favoritos." : "Quitado de favoritos.", Severity.Normal);
     }
 
     private void ComprarAhora()

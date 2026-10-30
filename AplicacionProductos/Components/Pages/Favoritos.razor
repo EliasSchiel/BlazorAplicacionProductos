@@ -1,0 +1,102 @@
+@page "/favoritos"
+@implements IDisposable
+@inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject FavoritosService FavoritosSvc
+@inject LogService LogApp
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Favoritos</MudText>
+    @if (productos.Count > 0)
+    {
+        <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" OnClick="FavoritosSvc.Vaciar">Quitar todos</MudButton>
+    }
+</div>
+
+@if (cargando)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (productos.Count == 0)
+{
+    <div class="estado-vacio">
+        <MudIcon Icon="@Icons.Material.Outlined.FavoriteBorder" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.h6">Todavía no tenés favoritos</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Tocá el corazón de un producto para guardarlo acá.</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="catalogo" Class="mt-3">Ir al catálogo</MudButton>
+    </div>
+}
+else
+{
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">@error</MudAlert>
+    }
+    <MudGrid Spacing="2">
+        @foreach (var p in productos)
+        {
+            <MudItem xs="6" sm="4" md="3" @key="p.IdProducto">
+                <TarjetaProducto Producto="p" />
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<ProductoDto> productos = new();
+    private bool cargando = true;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        FavoritosSvc.Cambio += OnCambio;
+        await Auth.InicializarAsync();
+        await CargarAsync();
+    }
+
+    /// <summary>Trae cada favorito de la API para mostrar precio y stock actuales.</summary>
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        var lista = new List<ProductoDto>();
+        try
+        {
+            foreach (var id in FavoritosSvc.Ids.ToList())
+            {
+                try
+                {
+                    var p = await ProductoSvc.GetByIdAsync(id);
+                    if (p is not null) lista.Add(p);
+                }
+                catch (ApiException ex) when (ex.StatusCode == 404)
+                {
+                    FavoritosSvc.Quitar(id);   // ya no esta a la venta
+                }
+            }
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar tus favoritos.";
+            LogApp.Reportar(ex, "Favoritos");
+        }
+        finally
+        {
+            productos = lista;
+            cargando = false;
+        }
+    }
+
+    // Si se quita un corazon desde esta pantalla, la tarjeta desaparece sin volver a llamar a la API
+    private void OnCambio()
+    {
+        productos = productos.Where(p => FavoritosSvc.EsFavorito(p.IdProducto)).ToList();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose() => FavoritosSvc.Cambio -= OnCambio;
+}

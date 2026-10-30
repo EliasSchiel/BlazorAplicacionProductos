@@ -53,8 +53,8 @@
 
     private RegistroClienteRequest datos = new();
 
-    // Solo rutas internas; por defecto el cliente nuevo arranca en el catalogo
-    private string Destino => !string.IsNullOrEmpty(Volver) && Volver.StartsWith('/') && !Volver.StartsWith("//") ? Volver : "/catalogo";
+    // Solo rutas internas; por defecto el cliente nuevo arranca en la portada de la tienda
+    private string Destino => !string.IsNullOrEmpty(Volver) && Volver.StartsWith('/') && !Volver.StartsWith("//") ? Volver : "/";
     private string repetir = "";
     private string? error;
     private bool cargando;

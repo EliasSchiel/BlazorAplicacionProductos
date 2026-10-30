@@ -5,8 +5,8 @@
 
 @*
     Menu por rol (la API igual valida cada permiso; esto es para no mostrar lo que no corresponde):
-    - Sin sesion: catalogo, carrito, ingresar, crear cuenta
-    - Cliente:    catalogo, carrito, mis compras, mi perfil, mi cuenta
+    - Sin sesion: inicio (tienda), catalogo, favoritos, carrito, ingresar, crear cuenta
+    - Cliente:    inicio (tienda), catalogo, favoritos, carrito, mis compras, mi perfil, mi cuenta
     - Operador:   inicio, ventas, productos, categorias, ingresos, proveedores, clientes, reportes, mi cuenta
     - Admin:      lo del Operador + usuarios y auditoria
 *@
@@ -35,7 +35,9 @@
     }
     else
     {
+        <MudNavLink Href="" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Home">Inicio</MudNavLink>
         <MudNavLink Href="catalogo" Icon="@Icons.Material.Filled.Storefront">Catálogo</MudNavLink>
+        <MudNavLink Href="favoritos" Icon="@Icons.Material.Filled.FavoriteBorder">Favoritos</MudNavLink>
         <MudNavLink Href="carrito" Icon="@Icons.Material.Filled.ShoppingCart">
             Carrito @(Carrito.CantidadTotal > 0 ? $"({Carrito.CantidadTotal})" : "")
         </MudNavLink>

@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject AuthService Auth
 @inject CarritoService Carrito
+@inject FavoritosService Favoritos
 
 @* Proveedores de MudBlazor: tienen que estar una sola vez en el layout principal *@
 <MudThemeProvider Theme="TemaApp.Principal" />
@@ -13,14 +14,16 @@
     <MudAppBar Elevation="1">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="AlternarMenu" />
         <MudLink Href="" Underline="Underline.None" Color="Color.Inherit" Class="d-flex align-center ml-1">
-            <MudIcon Icon="@Icons.Material.Filled.Storefront" Class="mr-2" />
-            <MudText Typo="Typo.h6" Class="titulo-app">Productos SG</MudText>
+            <MudIcon Icon="@Icons.Material.Outlined.ShoppingBag" Class="mr-2" />
+            <MudText Typo="Typo.h6" Class="titulo-app">SG Market</MudText>
         </MudLink>
         <MudSpacer />
 
         @* El carrito solo tiene sentido para el cliente (o alguien que todavia no inicio sesion) *@
         @if (!Auth.EsStaff)
         {
+            <MudIconButton Icon="@(Favoritos.Cantidad > 0 ? Icons.Material.Filled.Favorite : Icons.Material.Outlined.FavoriteBorder)"
+                           Color="Color.Inherit" Href="favoritos" aria-label="Favoritos" Class="ocultar-celular" />
             <MudBadge Content="@Carrito.CantidadTotal" Visible="@(Carrito.CantidadTotal > 0)" Color="Color.Error" Overlap="true" Bordered="true" Class="mr-1">
                 <MudIconButton Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Inherit" Href="carrito" aria-label="Carrito" />
             </MudBadge>
@@ -48,11 +51,16 @@
     </MudDrawer>
 
     <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="py-4 px-3 contenido">
+        <MudContainer MaxWidth="MaxWidth.Large" Class="@(Auth.EsStaff ? "py-4 px-3 contenido" : "py-4 px-3 contenido con-barra-inferior")">
             @Body
         </MudContainer>
     </MudMainContent>
 </MudLayout>
+
+@if (!Auth.EsStaff)
+{
+    <BarraInferior />
+}
 
 @code {
     private bool menuAbierto = true;
@@ -63,6 +71,7 @@
     {
         Auth.Cambio += Redibujar;       // cambia el menu y el icono del carrito al iniciar / cerrar sesion
         Carrito.Cambio += Redibujar;    // contador del carrito
+        Favoritos.Cambio += Redibujar;  // corazon de la barra
     }
 
     private void AlternarMenu() => menuAbierto = !menuAbierto;
@@ -73,5 +82,6 @@
     {
         Auth.Cambio -= Redibujar;
         Carrito.Cambio -= Redibujar;
+        Favoritos.Cambio -= Redibujar;
     }
 }
