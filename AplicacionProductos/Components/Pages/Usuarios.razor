@@ -1,0 +1,322 @@
+@page "/usuarios"
+@inject AuthService Auth
+@inject UsuarioService UsuarioSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Usuarios</MudText>
+    @if (Auth.EsAdmin && !formVisible)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Nuevo">Nuevo</MudButton>
+    }
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsAdmin)
+{
+    <MudAlert Severity="Severity.Warning">Solo el Admin puede administrar usuarios.</MudAlert>
+}
+else
+{
+    @if (formVisible)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">@(editandoId is null ? "Nuevo usuario" : $"Editar usuario: {editando!.Username}")</MudText>
+
+            @if (editandoId is null)
+            {
+                <MudTextField @bind-Value="crear.Username" Label="Usuario" Variant="Variant.Outlined" MaxLength="50" Class="mb-3"
+                              HelperText="Mínimo 3 caracteres" />
+                <MudTextField @bind-Value="crear.Password" Label="Contraseña inicial" Variant="Variant.Outlined"
+                              InputType="InputType.Password" MaxLength="100" Class="mb-3" HelperText="Mínimo 6 caracteres" />
+            }
+
+            <MudSelect T="string" @bind-Value="rol" Label="Rol" Variant="Variant.Outlined" Disabled="rolBloqueado" Class="mb-3">
+                @foreach (var r in RolesDisponibles)
+                {
+                    <MudSelectItem T="string" Value="@r">@r</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="email" Label="Email (opcional)" Variant="Variant.Outlined" InputType="InputType.Email" Class="mb-2" />
+
+            @if (editandoId is not null)
+            {
+                <MudSwitch T="bool" @bind-Value="activo" Label="Activo" Color="Color.Primary" Disabled="EsPropio(editando!)" />
+                @if (EsPropio(editando!))
+                {
+                    <MudText Typo="Typo.caption">Es tu propio usuario: no podés cambiarte el rol ni desactivarte.</MudText>
+                }
+            }
+            @if (editandoId is null)
+            {
+                <MudText Typo="Typo.caption">Los clientes se registran solos desde "Crear cuenta"; acá se crean cuentas de personal (Admin u Operador).</MudText>
+            }
+
+            @if (error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+            }
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">
+                    @(editandoId is null ? "Crear usuario" : "Guardar cambios")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="CerrarForm">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    <div class="mb-2" style="max-width:260px;">
+        <MudSelect T="string" Value="filtroRol" ValueChanged="CambiarFiltroAsync" Label="Filtrar por rol" Variant="Variant.Outlined">
+            <MudSelectItem T="string" Value="@("")">Todos</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Admin")">Admin</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Operador")">Operador</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Cliente")">Cliente</MudSelectItem>
+        </MudSelect>
+    </div>
+
+    @if (cargando)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (pagina is null || pagina.Items.Count == 0)
+    {
+        <MudText>No hay usuarios para mostrar.</MudText>
+    }
+    else
+    {
+        <MudTable Items="pagina.Items" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Usuario</MudTh>
+                <MudTh>Rol</MudTh>
+                <MudTh>Estado</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Usuario">
+                    @context.Username
+                    @if (EsPropio(context)) { <MudText Typo="Typo.caption" Color="Color.Secondary">(vos)</MudText> }
+                    @if (!string.IsNullOrWhiteSpace(context.Email))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Email</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Rol">@context.Rol</MudTd>
+                <MudTd DataLabel="Estado">@(context.Activo ? "Activo" : "Inactivo")</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="() => Editar(context)" />
+                    @if (context.Activo && !EsPropio(context))
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.PersonOff" Color="Color.Error" OnClick="() => aDarDeBaja = context" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <div class="d-flex justify-center mt-3">
+            <MudPagination Count="@Math.Max(pagina.TotalPages, 1)" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" />
+        </div>
+    }
+
+    @if (aDarDeBaja is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">
+            ¿Dar de baja a <strong>@aDarDeBaja.Username</strong>? Queda inactivo y ya no puede iniciar sesión (se conserva su historial). Para reactivarlo, editalo y activalo de nuevo.
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="DarDeBajaAsync" Disabled="ocupado">Sí, dar de baja</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => aDarDeBaja = null">Cancelar</MudButton>
+            </div>
+        </MudAlert>
+    }
+    @if (error is not null && !formVisible)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+    }
+}
+
+@code {
+    private const int TamanoPagina = 10;
+
+    private PagedResult<UsuarioDto>? pagina;
+    private int paginaActual = 1;
+    private string filtroRol = "";
+    private bool listo;
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    // formulario (alta y edicion comparten los campos)
+    private bool formVisible;
+    private int? editandoId;
+    private UsuarioDto? editando;
+    private UsuarioCrearRequest crear = new();
+    private string rol = "Operador";
+    private string? email;
+    private bool activo = true;
+    private UsuarioDto? aDarDeBaja;
+
+    // Clientes: su rol no se cambia desde acá (se crean solos con "Crear cuenta")
+    private bool rolBloqueado => editando is not null && (editando.Rol == "Cliente" || EsPropio(editando));
+    private string[] RolesDisponibles => editando?.Rol == "Cliente" ? new[] { "Cliente" } : new[] { "Admin", "Operador" };
+
+    private bool EsPropio(UsuarioDto u) => string.Equals(u.Username, Auth.Username, StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        if (Auth.EsAdmin) await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        try
+        {
+            pagina = await UsuarioSvc.GetPaginaAsync(paginaActual, TamanoPagina, filtroRol);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar los usuarios.";
+            LogApp.Reportar(ex, "Usuarios");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task CambiarFiltroAsync(string valor)
+    {
+        filtroRol = valor;
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+    private void Nuevo()
+    {
+        editandoId = null;
+        editando = null;
+        crear = new UsuarioCrearRequest();
+        rol = "Operador";
+        email = null;
+        activo = true;
+        error = null;
+        aDarDeBaja = null;
+        formVisible = true;
+    }
+
+    private void Editar(UsuarioDto u)
+    {
+        editandoId = u.IdUsuario;
+        editando = u;
+        rol = u.Rol;
+        email = u.Email;
+        activo = u.Activo;
+        error = null;
+        aDarDeBaja = null;
+        formVisible = true;
+    }
+
+    private void CerrarForm()
+    {
+        formVisible = false;
+        editandoId = null;
+        editando = null;
+        error = null;
+    }
+
+    private async Task GuardarAsync()
+    {
+        error = null;
+        var emailLimpio = string.IsNullOrWhiteSpace(email) ? null : email.Trim();
+        if (emailLimpio is not null && !emailLimpio.Contains('@')) { error = "Ingresá un email válido."; return; }
+
+        if (editandoId is null)
+        {
+            if (crear.Username.Trim().Length < 3) { error = "El usuario debe tener al menos 3 caracteres."; return; }
+            if (crear.Password.Length < 6) { error = "La contraseña debe tener al menos 6 caracteres."; return; }
+        }
+
+        ocupado = true;
+        try
+        {
+            if (editandoId is null)
+            {
+                crear.Username = crear.Username.Trim();
+                crear.Rol = rol;
+                crear.Email = emailLimpio;
+                await UsuarioSvc.CrearAsync(crear);
+                Snackbar.Add("Usuario creado.", Severity.Success);
+            }
+            else
+            {
+                await UsuarioSvc.ActualizarAsync(editandoId.Value, new UsuarioActualizarRequest { Rol = rol, Email = emailLimpio, Activo = activo });
+                Snackbar.Add("Usuario actualizado.", Severity.Success);
+            }
+            CerrarForm();
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // ej: "Ese nombre de usuario ya existe."
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo guardar el usuario.";
+            LogApp.Reportar(ex, "Usuarios.Guardar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private async Task DarDeBajaAsync()
+    {
+        if (aDarDeBaja is null) return;
+        error = null;
+        ocupado = true;
+        try
+        {
+            await UsuarioSvc.DarDeBajaAsync(aDarDeBaja.IdUsuario);
+            Snackbar.Add("Usuario dado de baja.", Severity.Success);
+            aDarDeBaja = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            aDarDeBaja = null;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo dar de baja el usuario.";
+            LogApp.Reportar(ex, "Usuarios.Baja");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

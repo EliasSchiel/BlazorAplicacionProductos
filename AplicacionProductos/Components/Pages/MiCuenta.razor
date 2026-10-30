@@ -1,0 +1,83 @@
+@page "/cuenta"
+@inject AuthService Auth
+@inject UsuarioService UsuarioSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-3">Mi cuenta</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudText Class="mb-3">Usuario: <strong>@Auth.Username</strong> (@Auth.Rol)</MudText>
+
+    <MudPaper Class="pa-4" Style="max-width:460px;">
+        <MudText Typo="Typo.h6" Class="mb-2">Cambiar contraseña</MudText>
+        <MudTextField @bind-Value="actual" Label="Contraseña actual" Variant="Variant.Outlined" InputType="InputType.Password" Immediate="true" Class="mb-3" />
+        <MudTextField @bind-Value="nueva" Label="Contraseña nueva" Variant="Variant.Outlined" InputType="InputType.Password" Immediate="true"
+                      Class="mb-3" HelperText="Mínimo 6 caracteres" />
+        <MudTextField @bind-Value="repetir" Label="Repetir contraseña nueva" Variant="Variant.Outlined" InputType="InputType.Password" Immediate="true" />
+
+        @if (error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+        }
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CambiarAsync" Disabled="ocupado" Class="mt-3">
+            @(ocupado ? "Guardando..." : "Cambiar contraseña")
+        </MudButton>
+    </MudPaper>
+}
+
+@code {
+    private string actual = "";
+    private string nueva = "";
+    private string repetir = "";
+    private string? error;
+    private bool ocupado;
+    private bool listo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+    }
+
+    private async Task CambiarAsync()
+    {
+        error = null;
+        if (string.IsNullOrEmpty(actual)) { error = "Ingresá tu contraseña actual."; return; }
+        if (nueva.Length < 6) { error = "La contraseña nueva debe tener al menos 6 caracteres."; return; }
+        if (nueva != repetir) { error = "Las contraseñas nuevas no coinciden."; return; }
+
+        ocupado = true;
+        try
+        {
+            await UsuarioSvc.CambiarPasswordAsync(actual, nueva);
+            Snackbar.Add("Contraseña actualizada.", Severity.Success);
+            actual = nueva = repetir = "";
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // ej: "La contraseña actual no es correcta."
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cambiar la contraseña.";
+            LogApp.Reportar(ex, "MiCuenta");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

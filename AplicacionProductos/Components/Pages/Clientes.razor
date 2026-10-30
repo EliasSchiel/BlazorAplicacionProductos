@@ -1,0 +1,305 @@
+@page "/clientes"
+@inject AuthService Auth
+@inject ClienteService ClienteSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Clientes</MudText>
+    @if (Auth.EsStaff && !formVisible)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Nuevo">Nuevo</MudButton>
+    }
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Warning">Solo Admin y Operador pueden administrar clientes.</MudAlert>
+}
+else
+{
+    @if (formVisible)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">@(editandoId is null ? "Nuevo cliente" : "Editar cliente")</MudText>
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Nombre" Label="Nombre" Variant="Variant.Outlined" MaxLength="80" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Apellido" Label="Apellido" Variant="Variant.Outlined" MaxLength="80" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Dni" Label="DNI (opcional)" Variant="Variant.Outlined" MaxLength="15" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Telefono" Label="Teléfono (opcional)" Variant="Variant.Outlined" MaxLength="30" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Email" Label="Email (opcional)" Variant="Variant.Outlined" InputType="InputType.Email" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField @bind-Value="form.Direccion" Label="Dirección (opcional)" Variant="Variant.Outlined" MaxLength="200" />
+                </MudItem>
+            </MudGrid>
+
+            @if (error is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+            }
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">
+                    @(editandoId is null ? "Agregar cliente" : "Guardar cambios")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="CerrarForm">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    <div class="mb-2">
+        <MudTextField @bind-Value="busqueda" Label="Buscar por nombre, apellido o DNI" Variant="Variant.Outlined" Immediate="true"
+                      OnKeyDown="OnKeyDown" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                      OnAdornmentClick="BuscarAsync" />
+    </div>
+
+    @if (cargando)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (pagina is null || pagina.Items.Count == 0)
+    {
+        <MudText>No se encontraron clientes.</MudText>
+    }
+    else
+    {
+        <MudTable Items="pagina.Items" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Cliente</MudTh>
+                <MudTh>Contacto</MudTh>
+                <MudTh>Cuenta</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Cliente">
+                    @context.Apellido, @context.Nombre
+                    @if (!string.IsNullOrWhiteSpace(context.Dni))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">DNI @context.Dni</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Contacto">
+                    @context.Email
+                    @if (!string.IsNullOrWhiteSpace(context.Telefono))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Telefono</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Cuenta">@(context.IdUsuario is null ? "Sin cuenta" : "Con cuenta")</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="() => Editar(context)" />
+                    @if (Auth.EsAdmin)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => aEliminar = context" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+
+        <div class="d-flex justify-center mt-3">
+            <MudPagination Count="@Math.Max(pagina.TotalPages, 1)" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" />
+        </div>
+    }
+
+    @if (aEliminar is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">
+            ¿Eliminar a <strong>@aEliminar.Apellido, @aEliminar.Nombre</strong>? Si tiene ventas registradas, la API no lo permite.
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="EliminarAsync" Disabled="ocupado">Sí, eliminar</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => aEliminar = null">Cancelar</MudButton>
+            </div>
+        </MudAlert>
+    }
+    @if (error is not null && !formVisible)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+    }
+}
+
+@code {
+    private const int TamanoPagina = 10;
+
+    private PagedResult<ClienteDto>? pagina;
+    private int paginaActual = 1;
+    private string busqueda = "";
+    private bool listo;
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    private bool formVisible;
+    private int? editandoId;
+    private ClienteGuardarRequest form = new();
+    private ClienteDto? aEliminar;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        if (Auth.EsStaff) await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        try
+        {
+            pagina = await ClienteSvc.GetPaginaAsync(paginaActual, TamanoPagina, busqueda);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar los clientes.";
+            LogApp.Reportar(ex, "Clientes");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+    private void Nuevo()
+    {
+        editandoId = null;
+        form = new ClienteGuardarRequest();
+        error = null;
+        aEliminar = null;
+        formVisible = true;
+    }
+
+    private void Editar(ClienteDto c)
+    {
+        editandoId = c.IdCliente;
+        form = new ClienteGuardarRequest
+        {
+            Nombre = c.Nombre, Apellido = c.Apellido, Dni = c.Dni,
+            Email = c.Email, Telefono = c.Telefono, Direccion = c.Direccion
+        };
+        error = null;
+        aEliminar = null;
+        formVisible = true;
+    }
+
+    private void CerrarForm()
+    {
+        formVisible = false;
+        editandoId = null;
+        error = null;
+    }
+
+    private async Task GuardarAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(form.Nombre) || string.IsNullOrWhiteSpace(form.Apellido))
+        {
+            error = "Nombre y apellido son obligatorios.";
+            return;
+        }
+        if (!string.IsNullOrWhiteSpace(form.Email) && !form.Email.Contains('@'))
+        {
+            error = "Ingresá un email válido.";
+            return;
+        }
+
+        ocupado = true;
+        try
+        {
+            form.Nombre = form.Nombre.Trim();
+            form.Apellido = form.Apellido.Trim();
+            if (editandoId is null)
+            {
+                await ClienteSvc.CrearAsync(form);
+                Snackbar.Add("Cliente creado.", Severity.Success);
+            }
+            else
+            {
+                await ClienteSvc.ActualizarAsync(editandoId.Value, form);
+                Snackbar.Add("Cliente actualizado.", Severity.Success);
+            }
+            CerrarForm();
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // ej: "Ya existe un cliente con ese DNI."
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo guardar el cliente.";
+            LogApp.Reportar(ex, "Clientes.Guardar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private async Task EliminarAsync()
+    {
+        if (aEliminar is null) return;
+        error = null;
+        ocupado = true;
+        try
+        {
+            await ClienteSvc.EliminarAsync(aEliminar.IdCliente);
+            Snackbar.Add("Cliente eliminado.", Severity.Success);
+            aEliminar = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // 409: tiene ventas
+            aEliminar = null;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo eliminar el cliente.";
+            LogApp.Reportar(ex, "Clientes.Eliminar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}
