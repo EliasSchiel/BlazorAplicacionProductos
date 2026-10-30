@@ -1,0 +1,247 @@
+@page "/checkout"
+@using System.Globalization
+@inject AuthService Auth
+@inject VentaService VentaSvc
+@inject CarritoService CarritoSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+@*
+    Checkout del cliente en dos pasos contra la API:
+    1) POST api/ventas con los items del carrito -> venta Pendiente (la API descuenta el stock y fija los precios)
+    2) POST api/ventas/{id}/pagar                 -> pago simulado (tarjeta terminada en 0000 = rechazado)
+    Si el pago se rechaza, la venta queda Pendiente: se puede reintentar aca o pagar despues desde "Mis compras".
+*@
+
+<MudText Typo="Typo.h5" Class="mb-3">Finalizar compra</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Info">El checkout es para clientes. Para vender en mostrador usá la pantalla de Ventas.</MudAlert>
+}
+else if (pago is not null && venta is not null)
+{
+    @* ---------- Compra terminada ---------- *@
+    <MudPaper Class="pa-6 text-center" Style="max-width:520px; margin:auto;">
+        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Style="font-size:4rem;" />
+        <MudText Typo="Typo.h5" Class="mt-2">¡Listo! Tu compra fue pagada</MudText>
+        <MudText Class="mt-2">Compra <strong>#@venta.IdVenta</strong> · $ @pago.Monto.ToString("N2", Cultura)</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">@pago.MetodoPago · Código @pago.CodigoTransaccion</MudText>
+        <div class="d-flex flex-wrap justify-center gap-2 mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="mis-compras">Ver mis compras</MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="catalogo">Seguir comprando</MudButton>
+        </div>
+    </MudPaper>
+}
+else if (venta is null && CarritoSvc.EstaVacio)
+{
+    <div class="estado-vacio">
+        <MudIcon Icon="@Icons.Material.Outlined.ShoppingCart" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.h6">No hay productos para comprar</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="catalogo" Class="mt-3">Ir al catálogo</MudButton>
+    </div>
+}
+else
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="7">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-2">Pago</MudText>
+
+                @if (venta is not null)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">
+                        Tu compra #@venta.IdVenta ya está registrada y los productos están reservados. Falta el pago:
+                        podés reintentar acá o pagarla después desde "Mis compras".
+                    </MudAlert>
+                }
+
+                <MudSelect T="int" @bind-Value="idMetodoPago" Label="Método de pago" Variant="Variant.Outlined" Class="mb-3"
+                           Disabled="procesando">
+                    <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                    @foreach (var m in metodosPago)
+                    {
+                        <MudSelectItem T="int" Value="@m.IdMetodoPago">@m.Nombre</MudSelectItem>
+                    }
+                </MudSelect>
+
+                @if (PideTarjeta)
+                {
+                    <MudTextField @bind-Value="numeroTarjeta" Label="Número de tarjeta" Variant="Variant.Outlined" InputType="InputType.Telephone"
+                                  MaxLength="19" Immediate="true" Disabled="procesando" Class="mb-1"
+                                  HelperText="Pago simulado: cualquier número de 13 a 19 dígitos. Si termina en 0000 se rechaza." />
+                }
+
+                @if (venta is null)
+                {
+                    <MudTextField @bind-Value="observaciones" Label="Notas para el vendedor (opcional)" Variant="Variant.Outlined"
+                                  MaxLength="500" Lines="2" Disabled="procesando" Class="mt-2" />
+                }
+
+                @if (error is not null)
+                {
+                    <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+                }
+
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Size="Size.Large" Class="mt-4"
+                           OnClick="ConfirmarAsync" Disabled="procesando">
+                    @if (procesando)
+                    {
+                        <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="mr-2" />
+                        <span>@pasoActual</span>
+                    }
+                    else
+                    {
+                        <span>@(venta is null ? "Confirmar y pagar" : "Reintentar pago") $ @Total.ToString("N2", Cultura)</span>
+                    }
+                </MudButton>
+                @if (venta is null)
+                {
+                    <MudButton Variant="Variant.Text" FullWidth="true" Href="carrito" Class="mt-2" Disabled="procesando">Volver al carrito</MudButton>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Text" FullWidth="true" Href="mis-compras" Class="mt-2" Disabled="procesando">Pagar más tarde</MudButton>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="5">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-2">Resumen</MudText>
+                @foreach (var r in Renglones)
+                {
+                    <div class="d-flex justify-space-between mb-1 gap-2">
+                        <MudText Typo="Typo.body2">@r.Nombre × @r.Cantidad</MudText>
+                        <MudText Typo="Typo.body2" Class="text-nowrap">$ @r.Subtotal.ToString("N2", Cultura)</MudText>
+                    </div>
+                }
+                <MudDivider Class="my-2" />
+                <div class="d-flex justify-space-between">
+                    <MudText Typo="Typo.h6">Total</MudText>
+                    <MudText Typo="Typo.h6" Class="precio">$ @Total.ToString("N2", Cultura)</MudText>
+                </div>
+                @if (venta is null)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">El precio final lo confirma el servidor al registrar la compra.</MudText>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+
+    private record Renglon(string Nombre, int Cantidad, decimal Subtotal);
+
+    private bool listo;
+    private bool procesando;
+    private string pasoActual = "";
+    private string? error;
+
+    private List<MetodoPagoDto> metodosPago = new();
+    private int idMetodoPago;
+    private string? numeroTarjeta;
+    private string? observaciones;
+
+    private VentaDto? venta;   // se completa cuando la API registra la compra (paso 1)
+    private PagoDto? pago;     // se completa cuando el pago se aprueba (paso 2)
+
+    // Antes de registrar la compra se muestra el carrito; despues, lo que devolvio la API (precios reales)
+    private IEnumerable<Renglon> Renglones => venta is not null
+        ? venta.Detalles.Select(d => new Renglon(d.ProductoNombre ?? $"Producto {d.IdProducto}", d.Cantidad, d.Subtotal))
+        : CarritoSvc.Items.Select(i => new Renglon(i.Nombre, i.Cantidad, i.Subtotal));
+
+    private decimal Total => venta?.Total ?? CarritoSvc.Total;
+
+    private bool PideTarjeta => metodosPago.FirstOrDefault(m => m.IdMetodoPago == idMetodoPago)?.Nombre
+        .Contains("tarjeta", StringComparison.OrdinalIgnoreCase) == true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login?volver=/checkout");
+            return;
+        }
+
+        try
+        {
+            if (!Auth.EsStaff) metodosPago = await VentaSvc.GetMetodosPagoAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar los métodos de pago.";
+            LogApp.Reportar(ex, "Checkout.Inicio");
+        }
+        listo = true;
+    }
+
+    private string? Validar()
+    {
+        if (idMetodoPago <= 0) return "Elegí un método de pago.";
+        if (PideTarjeta)
+        {
+            var digitos = new string((numeroTarjeta ?? "").Where(char.IsDigit).ToArray());
+            if (digitos.Length is < 13 or > 19) return "Ingresá un número de tarjeta válido (13 a 19 dígitos).";
+        }
+        return null;
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        error = Validar();
+        if (error is not null) return;
+
+        procesando = true;
+        try
+        {
+            // Paso 1: registrar la compra (una sola vez; si el pago falla se reintenta sobre la misma venta)
+            if (venta is null)
+            {
+                pasoActual = "Registrando tu compra...";
+                StateHasChanged();
+                venta = await VentaSvc.CrearAsync(new VentaCrearRequest
+                {
+                    Observaciones = string.IsNullOrWhiteSpace(observaciones) ? null : observaciones.Trim(),
+                    Items = CarritoSvc.ArmarItemsVenta()
+                }) ?? throw new ApiException(0, "Respuesta inválida del servidor.");
+
+                CarritoSvc.Vaciar();   // el stock ya quedo reservado en la venta
+            }
+
+            // Paso 2: pagar
+            pasoActual = "Procesando el pago...";
+            StateHasChanged();
+            pago = await VentaSvc.PagarAsync(venta.IdVenta, new PagoRequest
+            {
+                IdMetodoPago = idMetodoPago,
+                NumeroTarjeta = PideTarjeta ? new string(numeroTarjeta!.Where(char.IsDigit).ToArray()) : null
+            });
+            if (pago is null) error = "No se pudo confirmar el pago. Revisá el estado en \"Mis compras\".";
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // stock insuficiente (paso 1) o pago rechazado (paso 2)
+        }
+        catch (Exception ex)
+        {
+            error = "Ocurrió un error inesperado al procesar la compra.";
+            LogApp.Reportar(ex, "Checkout");
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+}

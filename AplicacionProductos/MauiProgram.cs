@@ -39,6 +39,9 @@ namespace AplicacionProductos
             builder.Services.AddSingleton<VentaService>();
             builder.Services.AddSingleton<ReporteService>();
             builder.Services.AddSingleton<LogService>();
+            builder.Services.AddSingleton<CarritoService>();
+            builder.Services.AddSingleton<PerfilService>();
+            builder.Services.AddSingleton<AuditoriaService>();
 
 #if DEBUG
     		builder.Services.AddBlazorWebViewDeveloperTools();
@@ -48,6 +51,9 @@ namespace AplicacionProductos
             var app = builder.Build();
 
             // Red de seguridad: cualquier excepcion no controlada se informa a la API (Origen = "App")
+            // El carrito se crea al arrancar para que escuche el logout desde el principio (y se vacie)
+            app.Services.GetRequiredService<CarritoService>();
+
             var log = app.Services.GetRequiredService<LogService>();
             AppDomain.CurrentDomain.UnhandledException += (_, e) =>
             {

@@ -10,18 +10,26 @@ public class ProductoService
 
     // ---------- Lectura (GET es publico) ----------
 
-    // GET api/Productos?page=&pageSize=&busqueda=&idCategoria=&incluirInactivos=
+    // GET api/Productos?page=&pageSize=&busqueda=&idCategoria=&incluirInactivos=&soloDisponibles=&orden=
+    /// <param name="orden">nombre (por defecto) | precio_asc | precio_desc | recientes</param>
+    /// <param name="soloDisponibles">true = solo con stock (catalogo del cliente)</param>
     public Task<PagedResult<ProductoDto>?> GetPaginaAsync(int page, int pageSize, string? busqueda = null,
-        int? idCategoria = null, bool incluirInactivos = false)
+        int? idCategoria = null, bool incluirInactivos = false, bool soloDisponibles = false, string? orden = null)
     {
         var q = new List<string> { $"page={page}", $"pageSize={pageSize}" };
         if (!string.IsNullOrWhiteSpace(busqueda)) q.Add($"busqueda={Uri.EscapeDataString(busqueda.Trim())}");
         if (idCategoria is > 0) q.Add($"idCategoria={idCategoria}");
         if (incluirInactivos) q.Add("incluirInactivos=true");   // la API solo lo respeta si el usuario es Admin/Operador
+        if (soloDisponibles) q.Add("soloDisponibles=true");
+        if (!string.IsNullOrEmpty(orden)) q.Add($"orden={Uri.EscapeDataString(orden)}");
         return _api.GetAsync<PagedResult<ProductoDto>>("api/Productos?" + string.Join("&", q));
     }
 
     public Task<ProductoDto?> GetByIdAsync(int id) => _api.GetAsync<ProductoDto>($"api/Productos/{id}");
+
+    /// <summary>GET api/Productos/stock-bajo (Admin / Operador): activos con stock en o debajo del minimo.</summary>
+    public async Task<List<ProductoDto>> GetStockBajoAsync()
+        => await _api.GetAsync<List<ProductoDto>>("api/Productos/stock-bajo") ?? new();
 
     // ---------- ABM (Admin / Operador) ----------
 

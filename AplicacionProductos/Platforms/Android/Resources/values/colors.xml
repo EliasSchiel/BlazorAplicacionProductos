@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="colorPrimary">#512BD4</color>
-    <color name="colorPrimaryDark">#2B0B98</color>
-    <color name="colorAccent">#2B0B98</color>
+    <!-- Mismos colores que TemaApp: azul principal y barra de estado oscura (los iconos blancos se leen bien) -->
+    <color name="colorPrimary">#3483FA</color>
+    <color name="colorPrimaryDark">#333333</color>
+    <color name="colorAccent">#3483FA</color>
 </resources>

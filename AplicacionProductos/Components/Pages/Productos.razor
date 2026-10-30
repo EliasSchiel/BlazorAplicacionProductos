@@ -121,6 +121,11 @@ else
             Nav.NavigateTo("/login");
             return;
         }
+        if (!Auth.EsStaff)
+        {
+            Nav.NavigateTo("/catalogo", replace: true);   // el cliente compra desde el catalogo
+            return;
+        }
 
         try { categorias = await CategoriaSvc.GetAsync(); }
         catch (ApiException) { /* el filtro de categorias es opcional */ }

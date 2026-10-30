@@ -18,10 +18,15 @@
     <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="IniciarAsync" Disabled="cargando" FullWidth="true">
         @(cargando ? "Ingresando..." : "Ingresar")
     </MudButton>
-    <MudButton Variant="Variant.Text" Href="registro" FullWidth="true" Class="mt-2">Crear cuenta de cliente</MudButton>
+    <MudButton Variant="Variant.Text" Href="@HrefRegistro" FullWidth="true" Class="mt-2">Crear cuenta de cliente</MudButton>
+    <MudButton Variant="Variant.Text" Href="catalogo" FullWidth="true" Class="mt-1" StartIcon="@Icons.Material.Filled.Storefront">Ver el catálogo sin iniciar sesión</MudButton>
 </MudPaper>
 
 @code {
+    // A donde volver despues de entrar (ej: /checkout cuando el carrito pide iniciar sesion). Se lee del query string a mano:
+    // [SupplyParameterFromQuery] no esta garantizado en Blazor Hybrid.
+    private string? Volver => System.Web.HttpUtility.ParseQueryString(Nav.ToAbsoluteUri(Nav.Uri).Query)["volver"];
+
     private string usuario = "";
     private string password = "";
     private string? error;
@@ -30,8 +35,13 @@
     protected override async Task OnInitializedAsync()
     {
         await Auth.InicializarAsync();
-        if (Auth.EstaLogueado) Nav.NavigateTo("/productos");
+        if (Auth.EstaLogueado) Nav.NavigateTo(Destino);
     }
+
+    private string HrefRegistro => string.IsNullOrEmpty(Volver) ? "registro" : $"registro?volver={Uri.EscapeDataString(Volver)}";
+
+    // Solo rutas internas ("/algo"): nunca una URL externa que venga en el query string
+    private string Destino => !string.IsNullOrEmpty(Volver) && Volver.StartsWith('/') && !Volver.StartsWith("//") ? Volver : "/";
 
     private async Task OnKeyDown(KeyboardEventArgs e)
     {
@@ -51,7 +61,7 @@
         try
         {
             await Auth.LoginAsync(usuario.Trim(), password);
-            Nav.NavigateTo("/productos");
+            Nav.NavigateTo(Destino);
         }
         catch (ApiException ex)
         {

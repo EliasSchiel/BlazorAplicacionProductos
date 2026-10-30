@@ -1,33 +1,112 @@
 @page "/"
 @inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
 
-<MudText Typo="Typo.h4" Class="mb-3">Productos</MudText>
+@* Inicio: el cliente (o quien no inicio sesion) va directo al catalogo; el personal ve accesos rapidos y alertas de stock *@
 
 @if (!listo)
 {
     <MudProgressLinear Indeterminate="true" />
 }
-else if (Auth.EstaLogueado)
-{
-    <MudText Class="mb-3">Hola, <strong>@Auth.Username</strong> (@Auth.Rol).</MudText>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="productos" Class="mr-2">Ver productos</MudButton>
-    @if (Auth.EsStaff)
-    {
-        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="reportes">Reportes</MudButton>
-    }
-}
 else
 {
-    <MudText Class="mb-3">Iniciá sesión para ver los productos.</MudText>
-    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="login">Iniciar sesión</MudButton>
+    <MudText Typo="Typo.h5" Class="mb-1">Hola, @Auth.Username</MudText>
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Ingresaste como @Auth.Rol.</MudText>
+
+    <MudGrid Spacing="2" Class="mb-4">
+        @foreach (var a in Accesos)
+        {
+            <MudItem xs="6" sm="4" md="3">
+                <MudPaper Class="pa-4 acceso-rapido" Elevation="1" @onclick="() => Nav.NavigateTo(a.Ruta)">
+                    <MudIcon Icon="@a.Icono" Color="Color.Primary" Size="Size.Large" />
+                    <MudText Typo="Typo.subtitle1" Class="mt-1">@a.Titulo</MudText>
+                </MudPaper>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <MudText Typo="Typo.h6" Class="mb-2">Productos con stock bajo</MudText>
+    @if (cargandoStock)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (errorStock is not null)
+    {
+        <MudAlert Severity="Severity.Error" Dense="true">@errorStock</MudAlert>
+    }
+    else if (stockBajo.Count == 0)
+    {
+        <MudAlert Severity="Severity.Success" Dense="true">Todos los productos están por encima del stock mínimo.</MudAlert>
+    }
+    else
+    {
+        <MudPaper Elevation="1">
+            <MudList T="string" Dense="true">
+                @foreach (var p in stockBajo)
+                {
+                    <MudListItem T="string" Icon="@Icons.Material.Filled.WarningAmber" IconColor="@(p.Stock == 0 ? Color.Error : Color.Warning)">
+                        <div class="d-flex justify-space-between gap-2">
+                            <span>@p.Nombre</span>
+                            <span class="text-nowrap">stock @p.Stock / mín. @p.StockMinimo</span>
+                        </div>
+                    </MudListItem>
+                }
+            </MudList>
+        </MudPaper>
+        <MudButton Variant="Variant.Text" Color="Color.Primary" Href="ingresos" StartIcon="@Icons.Material.Filled.LocalShipping" Class="mt-2">
+            Registrar un ingreso
+        </MudButton>
+    }
 }
 
 @code {
+    private record Acceso(string Titulo, string Icono, string Ruta);
+
     private bool listo;
+    private bool cargandoStock = true;
+    private string? errorStock;
+    private List<ProductoDto> stockBajo = new();
+
+    private IEnumerable<Acceso> Accesos
+    {
+        get
+        {
+            yield return new("Ventas", Icons.Material.Filled.PointOfSale, "/ventas");
+            yield return new("Productos", Icons.Material.Filled.Inventory2, "/productos");
+            yield return new("Ingresos", Icons.Material.Filled.LocalShipping, "/ingresos");
+            yield return new("Reportes", Icons.Material.Filled.Assessment, "/reportes");
+            if (Auth.EsAdmin) yield return new("Auditoría", Icons.Material.Filled.FactCheck, "/auditoria");
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
         await Auth.InicializarAsync();
+        if (!Auth.EsStaff)
+        {
+            Nav.NavigateTo("/catalogo", replace: true);
+            return;
+        }
         listo = true;
+
+        try
+        {
+            stockBajo = await ProductoSvc.GetStockBajoAsync();
+        }
+        catch (ApiException ex)
+        {
+            errorStock = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            errorStock = "No se pudo consultar el stock.";
+            LogApp.Reportar(ex, "Home");
+        }
+        finally
+        {
+            cargandoStock = false;
+        }
     }
 }

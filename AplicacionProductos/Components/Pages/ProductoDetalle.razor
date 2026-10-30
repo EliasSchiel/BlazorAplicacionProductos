@@ -1,0 +1,187 @@
+@page "/catalogo/{Id:int}"
+@using System.Globalization
+@inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject CarritoService Carrito
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" Href="catalogo" Class="mb-2">Volver al catálogo</MudButton>
+
+@if (cargando)
+{
+    <MudPaper Class="pa-4">
+        <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="260px" />
+        <MudSkeleton Width="70%" Height="40px" Class="mt-3" />
+        <MudSkeleton Width="40%" Height="40px" />
+    </MudPaper>
+}
+else if (producto is null)
+{
+    <div class="estado-vacio">
+        <MudIcon Icon="@Icons.Material.Outlined.Inventory2" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.h6">@(error ?? "El producto no existe o ya no está a la venta.")</MudText>
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="catalogo" Class="mt-2">Ver otros productos</MudButton>
+    </div>
+}
+else
+{
+    <MudPaper Class="pa-4">
+        <MudGrid Spacing="3">
+            <MudItem xs="12" md="7">
+                <div class="detalle-imagen">
+                    @if (imagenActual is not null)
+                    {
+                        <img src="@ApiConfig.ResolverUrl(imagenActual)" alt="@producto.Nombre" />
+                    }
+                    else
+                    {
+                        <MudIcon Icon="@Icons.Material.Outlined.Image" Style="font-size:5rem;" Color="Color.Secondary" />
+                    }
+                </div>
+                @if (producto.Imagenes.Count > 1)
+                {
+                    <div class="d-flex gap-2 mt-2 miniaturas">
+                        @foreach (var img in producto.Imagenes.OrderByDescending(i => i.EsPrincipal).ThenBy(i => i.Orden))
+                        {
+                            <img src="@ApiConfig.ResolverUrl(img.Url)" alt="Foto"
+                                 class="@(img.Url == imagenActual ? "seleccionada" : "")"
+                                 @onclick="() => imagenActual = img.Url" />
+                        }
+                    </div>
+                }
+            </MudItem>
+
+            <MudItem xs="12" md="5">
+                @if (!string.IsNullOrEmpty(producto.CategoriaNombre))
+                {
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@producto.CategoriaNombre</MudChip>
+                }
+                <MudText Typo="Typo.h5" Class="mt-1">@producto.Nombre</MudText>
+                <MudText Typo="Typo.h4" Class="precio my-2">$ @producto.Precio.ToString("N2", Cultura)</MudText>
+
+                @if (producto.Stock <= 0)
+                {
+                    <MudAlert Severity="Severity.Warning" Dense="true">Sin stock por el momento.</MudAlert>
+                }
+                else
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Success" Class="mb-3">
+                        Stock disponible: @producto.Stock @(producto.Stock == 1 ? "unidad" : "unidades")
+                    </MudText>
+
+                    @if (!Auth.EsStaff)
+                    {
+                        <div class="d-flex align-center gap-2 mb-3">
+                            <MudText Typo="Typo.body2">Cantidad:</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Variant="Variant.Outlined"
+                                           Disabled="cantidad <= 1" OnClick="() => cantidad--" />
+                            <MudText Typo="Typo.subtitle1" Style="min-width:28px; text-align:center;">@cantidad</MudText>
+                            <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Variant="Variant.Outlined"
+                                           Disabled="cantidad >= Disponible" OnClick="() => cantidad++" />
+                        </div>
+
+                        @if (Disponible <= 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning" Class="d-block mb-2">Ya tenés en el carrito todo el stock disponible.</MudText>
+                        }
+
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Size="Size.Large" Class="mb-2"
+                                   OnClick="ComprarAhora" Disabled="Disponible <= 0">Comprar ahora</MudButton>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" Size="Size.Large"
+                                   StartIcon="@Icons.Material.Filled.AddShoppingCart" OnClick="AgregarAlCarrito" Disabled="Disponible <= 0">
+                            Agregar al carrito
+                        </MudButton>
+                        @if (Carrito.CantidadDe(producto.IdProducto) > 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-2">
+                                Ya tenés @Carrito.CantidadDe(producto.IdProducto) en el carrito.
+                            </MudText>
+                        }
+                    }
+                }
+            </MudItem>
+
+            @if (!string.IsNullOrWhiteSpace(producto.Descripcion))
+            {
+                <MudItem xs="12">
+                    <MudDivider Class="mb-3" />
+                    <MudText Typo="Typo.h6" Class="mb-1">Descripción</MudText>
+                    <MudText Typo="Typo.body1" Style="white-space:pre-line;">@producto.Descripcion</MudText>
+                </MudItem>
+            }
+        </MudGrid>
+    </MudPaper>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+
+    private ProductoDto? producto;
+    private string? imagenActual;
+    private int cantidad = 1;
+    private bool cargando = true;
+    private string? error;
+
+    // Unidades que todavia se pueden sumar sin pasarse del stock
+    private int Disponible => producto is null ? 0 : producto.Stock - Carrito.CantidadDe(producto.IdProducto);
+
+    // OnParametersSet: si se navega de un producto a otro se reutiliza el componente
+    protected override async Task OnParametersSetAsync()
+    {
+        cargando = true;
+        error = null;
+        producto = null;
+        cantidad = 1;
+        await Auth.InicializarAsync();
+        try
+        {
+            producto = await ProductoSvc.GetByIdAsync(Id);
+            imagenActual = producto?.ImagenPrincipalUrl ?? producto?.Imagenes.FirstOrDefault()?.Url;
+            if (producto is not null) Carrito.Actualizar(producto);   // si ya estaba en el carrito, refresca precio y stock
+        }
+        catch (ApiException ex) when (ex.StatusCode == 404)
+        {
+            producto = null;
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cargar el producto.";
+            LogApp.Reportar(ex, "ProductoDetalle");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private bool Agregar()
+    {
+        if (producto is null || cantidad < 1 || Disponible <= 0) return false;
+        Carrito.Agregar(producto, Math.Min(cantidad, Disponible));
+        cantidad = 1;
+        return true;
+    }
+
+    private void AgregarAlCarrito()
+    {
+        if (!Agregar()) return;
+        Snackbar.Add("Producto agregado al carrito.", Severity.Success, o =>
+        {
+            o.Action = "Ver carrito";
+            o.OnClick = _ => { Nav.NavigateTo("/carrito"); return Task.CompletedTask; };
+        });
+    }
+
+    private void ComprarAhora()
+    {
+        if (Agregar()) Nav.NavigateTo("/carrito");
+    }
+}

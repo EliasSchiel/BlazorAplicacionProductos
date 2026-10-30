@@ -1,6 +1,7 @@
 html, body {
     font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-    --maui-status-bar-safe-area-background: rgb(3, 23, 62);
+    /* franja de la barra de estado (iOS / Android edge-to-edge): oscura para que se lean los iconos blancos */
+    --maui-status-bar-safe-area-background: #333333;
 }
 
 a, .btn-link {
@@ -93,4 +94,226 @@ h1:focus {
 
 .flex-column, .navbar-brand {
     padding-left: env(safe-area-inset-left, 0px);
+}
+
+/* ================= Estilos propios de la app (MudBlazor hace el resto) ================= */
+
+/* El contenido no queda tapado por la barra de gestos de Android / iPhone */
+.contenido {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.titulo-app {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.texto-cortado {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.text-nowrap {
+    white-space: nowrap;
+}
+
+.precio {
+    font-weight: 500;
+    color: #333;
+}
+
+/* Mensaje centrado para listas vacias (catalogo sin resultados, carrito vacio, etc.) */
+.estado-vacio {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: .25rem;
+    padding: 3rem 1rem;
+}
+
+/* ---------- Catalogo ---------- */
+.producto-card {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    cursor: pointer;
+    transition: box-shadow .15s ease;
+}
+
+    .producto-card:hover {
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .15) !important;
+    }
+
+    .producto-card .mud-card-content {
+        flex-grow: 1;
+    }
+
+.producto-imagen {
+    aspect-ratio: 1 / 1;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid #eee;
+    overflow: hidden;
+}
+
+    .producto-imagen img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;   /* la foto entera, sin recortar */
+        padding: 8px;
+    }
+
+/* Nombre en 2 lineas como maximo */
+.producto-nombre {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.6em;
+}
+
+/* ---------- Detalle de producto ---------- */
+.detalle-imagen {
+    aspect-ratio: 4 / 3;
+    max-height: 420px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+    .detalle-imagen img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+.miniaturas {
+    overflow-x: auto;
+}
+
+    .miniaturas img {
+        width: 64px;
+        height: 64px;
+        object-fit: cover;
+        border: 2px solid transparent;
+        border-radius: 6px;
+        cursor: pointer;
+        flex-shrink: 0;
+    }
+
+        .miniaturas img.seleccionada {
+            border-color: #3483FA;
+        }
+
+/* ---------- Carrito ---------- */
+.carrito-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 8px;
+    border-bottom: 1px solid #eee;
+}
+
+    .carrito-item:last-child {
+        border-bottom: none;
+    }
+
+.carrito-imagen {
+    width: 72px;
+    height: 72px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #eee;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+    overflow: hidden;
+}
+
+    .carrito-imagen img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+
+/* ---------- Inicio (personal) ---------- */
+.acceso-rapido {
+    cursor: pointer;
+    text-align: center;
+    height: 100%;
+    transition: box-shadow .15s ease;
+}
+
+    .acceso-rapido:hover {
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .15) !important;
+    }
+
+/* ---------- Auditoria ---------- */
+.bloque-codigo {
+    background: #f6f8fa;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    padding: 8px;
+    font-size: .75rem;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin: 0;
+}
+
+/* ---------- Celular ---------- */
+@media (max-width: 599px) {
+    /* Tablas apiladas de MudBlazor: menos aire para que entren en pantalla */
+    .mud-table-dense .mud-table-cell {
+        padding: 6px 8px !important;
+    }
+
+    .producto-card .mud-button-root {
+        font-size: .75rem;
+    }
+
+    h5.mud-typography-h5 {
+        font-size: 1.3rem;
+    }
+}
+
+/* Pantalla de carga antes de que arranque Blazor */
+.cargando-app {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-family: Roboto, Helvetica, Arial, sans-serif;
+    color: #555;
+}
+
+    .cargando-app .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid #e0e0e0;
+        border-top-color: #3483FA;
+        border-radius: 50%;
+        animation: girar 0.9s linear infinite;
+    }
+
+@keyframes girar {
+    to {
+        transform: rotate(360deg);
+    }
 }

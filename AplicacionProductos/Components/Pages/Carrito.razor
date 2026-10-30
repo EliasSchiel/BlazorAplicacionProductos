@@ -1,0 +1,165 @@
+@page "/carrito"
+@using System.Globalization
+@implements IDisposable
+@inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject CarritoService CarritoSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" Class="mb-3">Carrito</MudText>
+
+@if (actualizando)
+{
+    <MudProgressLinear Indeterminate="true" Class="mb-3" />
+}
+
+@foreach (var aviso in avisos)
+{
+    <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-2">@aviso</MudAlert>
+}
+
+@if (CarritoSvc.EstaVacio)
+{
+    <div class="estado-vacio">
+        <MudIcon Icon="@Icons.Material.Outlined.ShoppingCart" Size="Size.Large" Color="Color.Secondary" />
+        <MudText Typo="Typo.h6">Tu carrito está vacío</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">Sumá productos desde el catálogo.</MudText>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="catalogo" Class="mt-3">Ir al catálogo</MudButton>
+    </div>
+}
+else
+{
+    <MudGrid Spacing="3">
+        <MudItem xs="12" md="8">
+            <MudPaper Class="pa-2">
+                @foreach (var item in CarritoSvc.Items.ToList())
+                {
+                    <div class="carrito-item" @key="item.IdProducto">
+                        <div class="carrito-imagen" @onclick="() => VerProducto(item.IdProducto)">
+                            @if (!string.IsNullOrEmpty(item.ImagenUrl))
+                            {
+                                <img src="@ApiConfig.ResolverUrl(item.ImagenUrl)" alt="@item.Nombre" />
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Outlined.Image" Color="Color.Secondary" />
+                            }
+                        </div>
+                        <div class="flex-grow-1" style="min-width:0;">
+                            <MudText Typo="Typo.body1" Class="producto-nombre">@item.Nombre</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">$ @item.Precio.ToString("N2", Cultura) c/u · stock @item.Stock</MudText>
+                            <div class="d-flex align-center gap-1 mt-1 flex-wrap">
+                                <MudIconButton Icon="@Icons.Material.Filled.Remove" Size="Size.Small" Variant="Variant.Outlined"
+                                               OnClick="() => CarritoSvc.CambiarCantidad(item.IdProducto, item.Cantidad - 1)" />
+                                <MudText Typo="Typo.subtitle1" Style="min-width:28px; text-align:center;">@item.Cantidad</MudText>
+                                <MudIconButton Icon="@Icons.Material.Filled.Add" Size="Size.Small" Variant="Variant.Outlined"
+                                               Disabled="item.Cantidad >= item.Stock"
+                                               OnClick="() => CarritoSvc.CambiarCantidad(item.IdProducto, item.Cantidad + 1)" />
+                                <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" Class="ml-1"
+                                           OnClick="() => CarritoSvc.Quitar(item.IdProducto)">Eliminar</MudButton>
+                            </div>
+                        </div>
+                        <MudText Typo="Typo.subtitle1" Class="text-nowrap ml-2"><strong>$ @item.Subtotal.ToString("N2", Cultura)</strong></MudText>
+                    </div>
+                }
+            </MudPaper>
+        </MudItem>
+
+        <MudItem xs="12" md="4">
+            <MudPaper Class="pa-4">
+                <MudText Typo="Typo.h6" Class="mb-2">Resumen</MudText>
+                <div class="d-flex justify-space-between">
+                    <MudText>Productos (@CarritoSvc.CantidadTotal)</MudText>
+                    <MudText>$ @CarritoSvc.Total.ToString("N2", Cultura)</MudText>
+                </div>
+                <MudDivider Class="my-2" />
+                <div class="d-flex justify-space-between mb-3">
+                    <MudText Typo="Typo.h6">Total</MudText>
+                    <MudText Typo="Typo.h6" Class="precio">$ @CarritoSvc.Total.ToString("N2", Cultura)</MudText>
+                </div>
+
+                @if (Auth.EsStaff)
+                {
+                    <MudAlert Severity="Severity.Info" Dense="true">Las compras online son para clientes. Para vender en mostrador usá Ventas.</MudAlert>
+                }
+                else
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Size="Size.Large"
+                               OnClick="Continuar" Disabled="actualizando">
+                        @(Auth.EstaLogueado ? "Continuar compra" : "Iniciar sesión para comprar")
+                    </MudButton>
+                }
+                <MudButton Variant="Variant.Text" FullWidth="true" Href="catalogo" Class="mt-2">Seguir comprando</MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Error" FullWidth="true" OnClick="CarritoSvc.Vaciar" Class="mt-1">Vaciar carrito</MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+
+    private bool actualizando;
+    private List<string> avisos = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        CarritoSvc.Cambio += OnCambio;
+        await Auth.InicializarAsync();
+        await RefrescarAsync();
+    }
+
+    /// <summary>Trae precio y stock actuales de cada producto: puede haber cambiado desde que se agrego.</summary>
+    private async Task RefrescarAsync()
+    {
+        if (CarritoSvc.EstaVacio) return;
+        actualizando = true;
+        avisos.Clear();
+        try
+        {
+            foreach (var item in CarritoSvc.Items.ToList())
+            {
+                var antes = item.Cantidad;
+                var precioAntes = item.Precio;
+                try
+                {
+                    var p = await ProductoSvc.GetByIdAsync(item.IdProducto);
+                    if (p is null) continue;
+                    CarritoSvc.Actualizar(p);
+
+                    var ahora = CarritoSvc.CantidadDe(p.IdProducto);
+                    if (ahora == 0) avisos.Add($"\"{p.Nombre}\" se quitó del carrito porque se quedó sin stock.");
+                    else if (ahora < antes) avisos.Add($"De \"{p.Nombre}\" solo quedan {p.Stock}: ajustamos la cantidad.");
+                    else if (p.Precio != precioAntes) avisos.Add($"El precio de \"{p.Nombre}\" cambió a $ {p.Precio.ToString("N2", Cultura)}.");
+                }
+                catch (ApiException ex) when (ex.StatusCode == 404)
+                {
+                    CarritoSvc.Quitar(item.IdProducto);
+                    avisos.Add($"\"{item.Nombre}\" ya no está a la venta y se quitó del carrito.");
+                }
+            }
+        }
+        catch (ApiException)
+        {
+            // sin conexion: se muestra lo guardado; el servidor valida stock y precio al confirmar
+        }
+        catch (Exception ex)
+        {
+            LogApp.Reportar(ex, "Carrito.Refrescar");
+        }
+        finally
+        {
+            actualizando = false;
+        }
+    }
+
+    private void VerProducto(int id) => Nav.NavigateTo($"/catalogo/{id}");
+
+    private void Continuar()
+        => Nav.NavigateTo(Auth.EstaLogueado ? "/checkout" : "/login?volver=/checkout");
+
+    private void OnCambio() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => CarritoSvc.Cambio -= OnCambio;
+}

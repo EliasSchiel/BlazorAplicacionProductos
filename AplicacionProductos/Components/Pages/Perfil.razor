@@ -1,0 +1,158 @@
+@page "/perfil"
+@inject AuthService Auth
+@inject PerfilService PerfilSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-1">Mi perfil</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Tus datos de cliente (se usan en tus compras).</MudText>
+
+@if (cargando)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (Auth.EstaLogueado && Auth.Rol != "Cliente")
+{
+    <MudAlert Severity="Severity.Info">El perfil es para usuarios Cliente. Tu cuenta (@Auth.Rol) se administra desde "Mi cuenta".</MudAlert>
+}
+else if (perfil is null)
+{
+    <MudAlert Severity="Severity.Error">
+        @(error ?? "Tu usuario no tiene una ficha de cliente asociada.")
+        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CargarAsync">Reintentar</MudButton>
+    </MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4" Style="max-width:640px;">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="form.Nombre" Label="Nombre" Variant="Variant.Outlined" MaxLength="80" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="form.Apellido" Label="Apellido" Variant="Variant.Outlined" MaxLength="80" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="form.Dni" Label="DNI (opcional)" Variant="Variant.Outlined" MaxLength="15" InputType="InputType.Telephone" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="form.Telefono" Label="Teléfono (opcional)" Variant="Variant.Outlined" MaxLength="30" InputType="InputType.Telephone" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="form.Email" Label="Email" Variant="Variant.Outlined" InputType="InputType.Email" MaxLength="150" />
+            </MudItem>
+            <MudItem xs="12">
+                <MudTextField @bind-Value="form.Direccion" Label="Dirección de entrega (opcional)" Variant="Variant.Outlined" MaxLength="200" />
+            </MudItem>
+        </MudGrid>
+
+        @if (error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+        }
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">
+                @(ocupado ? "Guardando..." : "Guardar cambios")
+            </MudButton>
+            <MudButton Variant="Variant.Text" Href="cuenta" StartIcon="@Icons.Material.Filled.Key">Cambiar contraseña</MudButton>
+        </div>
+    </MudPaper>
+}
+
+@code {
+    private ClienteDto? perfil;
+    private ClienteGuardarRequest form = new();
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login?volver=/perfil");
+            return;
+        }
+        if (Auth.Rol != "Cliente")
+        {
+            cargando = false;
+            return;
+        }
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        try
+        {
+            perfil = await PerfilSvc.GetAsync();
+            if (perfil is not null)
+            {
+                form = new ClienteGuardarRequest
+                {
+                    Nombre = perfil.Nombre, Apellido = perfil.Apellido, Dni = perfil.Dni,
+                    Email = perfil.Email, Telefono = perfil.Telefono, Direccion = perfil.Direccion
+                };
+            }
+        }
+        catch (ApiException ex) when (ex.StatusCode == 404)
+        {
+            perfil = null;   // usuario Cliente sin ficha: lo muestra el mensaje por defecto
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cargar tu perfil.";
+            LogApp.Reportar(ex, "Perfil");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private static string? Limpiar(string? texto) => string.IsNullOrWhiteSpace(texto) ? null : texto.Trim();
+
+    private async Task GuardarAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(form.Nombre) || string.IsNullOrWhiteSpace(form.Apellido)) { error = "Nombre y apellido son obligatorios."; return; }
+        if (!string.IsNullOrWhiteSpace(form.Email) && !form.Email.Contains('@')) { error = "Ingresá un email válido."; return; }
+
+        ocupado = true;
+        try
+        {
+            await PerfilSvc.ActualizarAsync(new ClienteGuardarRequest
+            {
+                Nombre = form.Nombre.Trim(),
+                Apellido = form.Apellido.Trim(),
+                Dni = Limpiar(form.Dni),
+                Email = Limpiar(form.Email),
+                Telefono = Limpiar(form.Telefono),
+                Direccion = Limpiar(form.Direccion)
+            });
+            Snackbar.Add("Tus datos se guardaron.", Severity.Success);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // ej: "Ya existe un cliente con ese DNI."
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron guardar tus datos.";
+            LogApp.Reportar(ex, "Perfil.Guardar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

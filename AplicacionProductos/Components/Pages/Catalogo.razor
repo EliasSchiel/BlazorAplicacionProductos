@@ -1,0 +1,233 @@
+@page "/catalogo"
+@using System.Globalization
+@implements IDisposable
+@inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject CategoriaService CategoriaSvc
+@inject CarritoService Carrito
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+@* Catalogo publico (la API no pide token para leer productos). Comprar requiere iniciar sesion como Cliente. *@
+
+<MudGrid Spacing="2" Class="mb-2">
+    <MudItem xs="12" md="6">
+        <MudTextField @bind-Value="busqueda" Placeholder="Buscar productos..." Variant="Variant.Outlined" Immediate="true"
+                      Margin="Margin.Dense" OnKeyDown="OnKeyDown" Adornment="Adornment.End"
+                      AdornmentIcon="@Icons.Material.Filled.Search" OnAdornmentClick="BuscarAsync" Clearable="true"
+                      OnClearButtonClick="BuscarAsync" />
+    </MudItem>
+    <MudItem xs="6" md="3">
+        <MudSelect T="int" Value="idCategoria" ValueChanged="CambiarCategoriaAsync" Label="Categoría" Variant="Variant.Outlined" Margin="Margin.Dense">
+            <MudSelectItem T="int" Value="0">Todas</MudSelectItem>
+            @foreach (var c in categorias)
+            {
+                <MudSelectItem T="int" Value="@c.IdCategoria">@c.Nombre</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="6" md="3">
+        <MudSelect T="string" Value="orden" ValueChanged="CambiarOrdenAsync" Label="Ordenar por" Variant="Variant.Outlined" Margin="Margin.Dense">
+            <MudSelectItem T="string" Value="@("recientes")">Más nuevos</MudSelectItem>
+            <MudSelectItem T="string" Value="@("precio_asc")">Menor precio</MudSelectItem>
+            <MudSelectItem T="string" Value="@("precio_desc")">Mayor precio</MudSelectItem>
+            <MudSelectItem T="string" Value="@("nombre")">Nombre</MudSelectItem>
+        </MudSelect>
+    </MudItem>
+</MudGrid>
+
+@if (Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Info" Dense="true" Class="mb-3">Estás viendo el catálogo como lo ve un cliente. Para vender usá la pantalla de Ventas.</MudAlert>
+}
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">
+        @error
+        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CargarAsync">Reintentar</MudButton>
+    </MudAlert>
+}
+
+@if (cargando)
+{
+    <MudGrid Spacing="2">
+        @for (var i = 0; i < 4; i++)
+        {
+            <MudItem xs="6" sm="4" md="3">
+                <MudCard Elevation="1">
+                    <MudSkeleton SkeletonType="SkeletonType.Rectangle" Height="150px" />
+                    <MudCardContent>
+                        <MudSkeleton Width="80%" />
+                        <MudSkeleton Width="50%" Height="32px" />
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+else if (pagina is null || pagina.Items.Count == 0)
+{
+    @if (error is null)
+    {
+        <div class="estado-vacio">
+            <MudIcon Icon="@Icons.Material.Outlined.SearchOff" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">No encontramos productos</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Probá con otra búsqueda u otra categoría.</MudText>
+        </div>
+    }
+}
+else
+{
+    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-2">@pagina.TotalCount resultado(s)</MudText>
+    <MudGrid Spacing="2">
+        @foreach (var p in pagina.Items)
+        {
+            <MudItem xs="6" sm="4" md="3" @key="p.IdProducto">
+                <MudCard Elevation="1" Class="producto-card" @onclick="() => VerDetalle(p.IdProducto)">
+                    <div class="producto-imagen">
+                        @if (!string.IsNullOrEmpty(p.ImagenPrincipalUrl))
+                        {
+                            <img src="@ApiConfig.ResolverUrl(p.ImagenPrincipalUrl)" alt="@p.Nombre" loading="lazy" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Outlined.Image" Size="Size.Large" Color="Color.Secondary" />
+                        }
+                    </div>
+                    <MudCardContent Class="pa-3">
+                        <MudText Typo="Typo.body2" Class="producto-nombre">@p.Nombre</MudText>
+                        <MudText Typo="Typo.h6" Class="precio">$ @p.Precio.ToString("N2", Cultura)</MudText>
+                        @if (p.Stock <= 0)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Error">Sin stock</MudText>
+                        }
+                        else if (p.Stock <= 5)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">¡Últimas @p.Stock unidades!</MudText>
+                        }
+                        else
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Success">Disponible</MudText>
+                        }
+                    </MudCardContent>
+                    @if (!Auth.EsStaff && p.Stock > 0)
+                    {
+                        <MudCardActions Class="pt-0 px-3 pb-3">
+                            @* stopPropagation: tocar el boton agrega al carrito sin abrir el detalle *@
+                            <div @onclick:stopPropagation="true" style="width:100%;">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small" FullWidth="true"
+                                           StartIcon="@Icons.Material.Filled.AddShoppingCart" OnClick="() => Agregar(p)"
+                                           Disabled="Carrito.CantidadDe(p.IdProducto) >= p.Stock">
+                                    @(Carrito.CantidadDe(p.IdProducto) > 0 ? $"En carrito ({Carrito.CantidadDe(p.IdProducto)})" : "Agregar")
+                                </MudButton>
+                            </div>
+                        </MudCardActions>
+                    }
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+
+    @if (pagina.TotalPages > 1)
+    {
+        <div class="d-flex justify-center mt-4">
+            <MudPagination Count="pagina.TotalPages" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" Size="Size.Small" />
+        </div>
+    }
+}
+
+@code {
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+    private const int TamanoPagina = 12;
+
+    private PagedResult<ProductoDto>? pagina;
+    private List<CategoriaDto> categorias = new();
+    private string busqueda = "";
+    private int idCategoria;
+    private string orden = "recientes";
+    private int paginaActual = 1;
+    private bool cargando = true;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Carrito.Cambio += OnCarritoCambio;
+        await Auth.InicializarAsync();
+
+        try { categorias = await CategoriaSvc.GetAsync(); }
+        catch (ApiException) { /* el filtro de categorias es opcional */ }
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        try
+        {
+            pagina = await ProductoSvc.GetPaginaAsync(paginaActual, TamanoPagina, busqueda, idCategoria,
+                soloDisponibles: false, orden: orden);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cargar el catálogo.";
+            LogApp.Reportar(ex, "Catalogo");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    private async Task CambiarCategoriaAsync(int valor)
+    {
+        idCategoria = valor;
+        await BuscarAsync();
+    }
+
+    private async Task CambiarOrdenAsync(string valor)
+    {
+        orden = valor;
+        await BuscarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+    private void VerDetalle(int id) => Nav.NavigateTo($"/catalogo/{id}");
+
+    private void Agregar(ProductoDto p)
+    {
+        Carrito.Agregar(p);
+        Snackbar.Add($"Agregaste \"{p.Nombre}\" al carrito.", Severity.Success, o =>
+        {
+            o.Action = "Ver carrito";
+            o.OnClick = _ => { Nav.NavigateTo("/carrito"); return Task.CompletedTask; };
+        });
+    }
+
+    private void OnCarritoCambio() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Carrito.Cambio -= OnCarritoCambio;
+}

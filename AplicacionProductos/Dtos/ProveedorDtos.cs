@@ -10,7 +10,7 @@ public class ProveedorDto
     public string? Direccion { get; set; }
 }
 
-/// <summary>Body de POST api/Proveedores</summary>
+/// <summary>Body de POST (crear) y PUT (editar) api/Proveedores</summary>
 public class ProveedorGuardarRequest
 {
     public string RazonSocial { get; set; } = string.Empty;

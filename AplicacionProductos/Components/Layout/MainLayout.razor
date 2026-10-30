@@ -1,26 +1,54 @@
 @inherits LayoutComponentBase
+@implements IDisposable
+@inject AuthService Auth
+@inject CarritoService Carrito
 
 @* Proveedores de MudBlazor: tienen que estar una sola vez en el layout principal *@
-<MudThemeProvider />
+<MudThemeProvider Theme="TemaApp.Principal" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
     <MudAppBar Elevation="1">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" OnClick="AlternarMenu" />
-        <MudText Typo="Typo.h6" Class="ml-2">Productos</MudText>
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="AlternarMenu" />
+        <MudLink Href="" Underline="Underline.None" Color="Color.Inherit" Class="d-flex align-center ml-1">
+            <MudIcon Icon="@Icons.Material.Filled.Storefront" Class="mr-2" />
+            <MudText Typo="Typo.h6" Class="titulo-app">Productos SG</MudText>
+        </MudLink>
+        <MudSpacer />
+
+        @* El carrito solo tiene sentido para el cliente (o alguien que todavia no inicio sesion) *@
+        @if (!Auth.EsStaff)
+        {
+            <MudBadge Content="@Carrito.CantidadTotal" Visible="@(Carrito.CantidadTotal > 0)" Color="Color.Error" Overlap="true" Bordered="true" Class="mr-1">
+                <MudIconButton Icon="@Icons.Material.Filled.ShoppingCart" Color="Color.Inherit" Href="carrito" aria-label="Carrito" />
+            </MudBadge>
+        }
+        @if (!Auth.EstaLogueado)
+        {
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="login" StartIcon="@Icons.Material.Filled.Login">Ingresar</MudButton>
+        }
     </MudAppBar>
 
-    <MudDrawer @bind-Open="menuAbierto" Elevation="2">
-        <MudDrawerHeader>
-            <MudText Typo="Typo.h6">AplicacionProductos</MudText>
-        </MudDrawerHeader>
+    @* Responsive: fijo en pantallas grandes; en el celular se superpone y se cierra al navegar *@
+    <MudDrawer @bind-Open="menuAbierto" Variant="DrawerVariant.Responsive" Breakpoint="Breakpoint.Md" ClipMode="DrawerClipMode.Always" Elevation="2">
+        @if (Auth.EstaLogueado)
+        {
+            <div class="pa-4 d-flex align-center gap-3">
+                <MudAvatar Color="Color.Primary" Size="Size.Medium">@Inicial</MudAvatar>
+                <div style="min-width:0;">
+                    <MudText Typo="Typo.subtitle1" Class="texto-cortado">@Auth.Username</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@Auth.Rol</MudText>
+                </div>
+            </div>
+            <MudDivider />
+        }
         <NavMenu />
     </MudDrawer>
 
     <MudMainContent>
-        <MudContainer MaxWidth="MaxWidth.Large" Class="my-4">
+        <MudContainer MaxWidth="MaxWidth.Large" Class="py-4 px-3 contenido">
             @Body
         </MudContainer>
     </MudMainContent>
@@ -29,5 +57,21 @@
 @code {
     private bool menuAbierto = true;
 
+    private string Inicial => string.IsNullOrEmpty(Auth.Username) ? "?" : Auth.Username[..1].ToUpperInvariant();
+
+    protected override void OnInitialized()
+    {
+        Auth.Cambio += Redibujar;       // cambia el menu y el icono del carrito al iniciar / cerrar sesion
+        Carrito.Cambio += Redibujar;    // contador del carrito
+    }
+
     private void AlternarMenu() => menuAbierto = !menuAbierto;
+
+    private void Redibujar() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Auth.Cambio -= Redibujar;
+        Carrito.Cambio -= Redibujar;
+    }
 }
