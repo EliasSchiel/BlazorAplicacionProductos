@@ -16,7 +16,7 @@ public class ApiException : Exception
 
 /// <summary>
 /// Unico lugar que habla HTTP con la API: agrega el token, serializa JSON y traduce errores a ApiException.
-/// Los servicios (ProductoService, ReporteService...) solo arman la URL y llaman aca.
+/// Los servicios solo arman la URL y llaman aca.
 /// </summary>
 public class ApiClient
 {
