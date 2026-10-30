@@ -1,0 +1,100 @@
+@page "/registro"
+@inject AuthService Auth
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" Class="mb-3">Crear cuenta de cliente</MudText>
+
+<MudPaper Class="pa-4" Style="max-width:560px;">
+    <MudTextField @bind-Value="datos.Username" Label="Usuario" Variant="Variant.Outlined" Immediate="true" MaxLength="50" Class="mb-3"
+                  HelperText="Mínimo 3 caracteres" />
+    <MudTextField @bind-Value="datos.Password" Label="Contraseña" Variant="Variant.Outlined" Immediate="true"
+                  InputType="InputType.Password" MaxLength="100" Class="mb-3" HelperText="Mínimo 6 caracteres" />
+    <MudTextField @bind-Value="repetir" Label="Repetir contraseña" Variant="Variant.Outlined" Immediate="true"
+                  InputType="InputType.Password" MaxLength="100" Class="mb-3" />
+    <MudTextField @bind-Value="datos.Email" Label="Email" Variant="Variant.Outlined" Immediate="true"
+                  InputType="InputType.Email" Class="mb-3" />
+
+    <MudGrid>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="datos.Nombre" Label="Nombre" Variant="Variant.Outlined" Immediate="true" MaxLength="80" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="datos.Apellido" Label="Apellido" Variant="Variant.Outlined" Immediate="true" MaxLength="80" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="datos.Dni" Label="DNI (opcional)" Variant="Variant.Outlined" Immediate="true" MaxLength="15" />
+        </MudItem>
+        <MudItem xs="12" sm="6">
+            <MudTextField @bind-Value="datos.Telefono" Label="Teléfono (opcional)" Variant="Variant.Outlined" Immediate="true" MaxLength="30" />
+        </MudItem>
+        <MudItem xs="12">
+            <MudTextField @bind-Value="datos.Direccion" Label="Dirección (opcional)" Variant="Variant.Outlined" Immediate="true" MaxLength="200" />
+        </MudItem>
+    </MudGrid>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+    }
+
+    <div class="d-flex flex-wrap gap-2 mt-4">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RegistrarAsync" Disabled="cargando">
+            @(cargando ? "Creando cuenta..." : "Crear cuenta")
+        </MudButton>
+        <MudButton Variant="Variant.Text" Href="login">Ya tengo cuenta</MudButton>
+    </div>
+</MudPaper>
+
+@code {
+    private RegistroClienteRequest datos = new();
+    private string repetir = "";
+    private string? error;
+    private bool cargando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (Auth.EstaLogueado) Nav.NavigateTo("/productos");
+    }
+
+    private string? Validar()
+    {
+        if (datos.Username.Trim().Length < 3) return "El usuario debe tener al menos 3 caracteres.";
+        if (datos.Password.Length < 6) return "La contraseña debe tener al menos 6 caracteres.";
+        if (datos.Password != repetir) return "Las contraseñas no coinciden.";
+        if (!datos.Email.Contains('@')) return "Ingresá un email válido.";
+        if (string.IsNullOrWhiteSpace(datos.Nombre) || string.IsNullOrWhiteSpace(datos.Apellido)) return "Nombre y apellido son obligatorios.";
+        return null;
+    }
+
+    private async Task RegistrarAsync()
+    {
+        error = Validar();
+        if (error is not null) return;
+
+        cargando = true;
+        try
+        {
+            datos.Username = datos.Username.Trim();
+            datos.Email = datos.Email.Trim();
+            datos.Nombre = datos.Nombre.Trim();
+            datos.Apellido = datos.Apellido.Trim();
+            await Auth.RegistrarAsync(datos);       // la API devuelve el token: queda logueado
+            Nav.NavigateTo("/productos");
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;                      // ej: "Ese nombre de usuario ya existe."
+        }
+        catch (Exception ex)
+        {
+            error = "Ocurrió un error inesperado.";
+            LogApp.Reportar(ex, "Registro");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+}

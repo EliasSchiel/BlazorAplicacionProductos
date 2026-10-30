@@ -1,0 +1,215 @@
+@page "/categorias"
+@inject AuthService Auth
+@inject CategoriaService CategoriaSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-3">Categorías</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Warning">Solo Admin y Operador pueden administrar categorías.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">@(editandoId is null ? "Nueva categoría" : "Editar categoría")</MudText>
+        <MudTextField @bind-Value="form.Nombre" Label="Nombre" Variant="Variant.Outlined" MaxLength="80" Class="mb-3" />
+        <MudTextField @bind-Value="form.Descripcion" Label="Descripción (opcional)" Variant="Variant.Outlined" MaxLength="300" Class="mb-2" />
+        <MudSwitch T="bool" @bind-Value="form.Activo" Label="Activa" Color="Color.Primary" />
+
+        @if (error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-2">@error</MudAlert>
+        }
+
+        <div class="d-flex flex-wrap gap-2 mt-3">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="ocupado">
+                @(editandoId is null ? "Agregar" : "Guardar cambios")
+            </MudButton>
+            @if (editandoId is not null)
+            {
+                <MudButton Variant="Variant.Outlined" OnClick="CancelarEdicion">Cancelar</MudButton>
+            }
+        </div>
+    </MudPaper>
+
+    @if (cargando)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (categorias.Count == 0)
+    {
+        <MudText>Todavía no hay categorías. Agregá la primera arriba.</MudText>
+    }
+    else
+    {
+        <MudTable Items="categorias" Hover="true" Dense="true">
+            <HeaderContent>
+                <MudTh>Nombre</MudTh>
+                <MudTh>Estado</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Nombre">
+                    @context.Nombre
+                    @if (!string.IsNullOrWhiteSpace(context.Descripcion))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.Descripcion</MudText>
+                    }
+                </MudTd>
+                <MudTd DataLabel="Estado">@(context.Activo ? "Activa" : "Inactiva")</MudTd>
+                <MudTd>
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" OnClick="() => Editar(context)" />
+                    @if (Auth.Rol == "Admin")
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => PedirBaja(context)" />
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+    }
+
+    @if (aEliminar is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">
+            ¿Eliminar la categoría <strong>@aEliminar.Nombre</strong>? Si tiene productos, la API no lo permite y conviene desactivarla.
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="EliminarAsync" Disabled="ocupado">Sí, eliminar</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => aEliminar = null">Cancelar</MudButton>
+            </div>
+        </MudAlert>
+    }
+}
+
+@code {
+    private List<CategoriaDto> categorias = new();
+    private CategoriaGuardarRequest form = new();
+    private int? editandoId;
+    private CategoriaDto? aEliminar;
+    private bool listo;
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        try
+        {
+            categorias = await CategoriaSvc.GetAsync(incluirInactivas: true);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar las categorías.";
+            LogApp.Reportar(ex, "Categorias");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private void Editar(CategoriaDto c)
+    {
+        editandoId = c.IdCategoria;
+        form = new CategoriaGuardarRequest { Nombre = c.Nombre, Descripcion = c.Descripcion, Activo = c.Activo };
+        aEliminar = null;
+        error = null;
+    }
+
+    private void CancelarEdicion()
+    {
+        editandoId = null;
+        form = new CategoriaGuardarRequest();
+        error = null;
+    }
+
+    private void PedirBaja(CategoriaDto c) => aEliminar = c;
+
+    private async Task GuardarAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(form.Nombre)) { error = "El nombre es obligatorio."; return; }
+
+        ocupado = true;
+        try
+        {
+            form.Nombre = form.Nombre.Trim();
+            if (editandoId is null)
+            {
+                await CategoriaSvc.CrearAsync(form);
+                Snackbar.Add("Categoría creada.", Severity.Success);
+            }
+            else
+            {
+                await CategoriaSvc.ActualizarAsync(editandoId.Value, form);
+                Snackbar.Add("Categoría actualizada.", Severity.Success);
+            }
+            CancelarEdicion();
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // ej: "Ya existe una categoría con ese nombre."
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo guardar la categoría.";
+            LogApp.Reportar(ex, "Categorias.Guardar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private async Task EliminarAsync()
+    {
+        if (aEliminar is null) return;
+        error = null;
+        ocupado = true;
+        try
+        {
+            await CategoriaSvc.EliminarAsync(aEliminar.IdCategoria);
+            Snackbar.Add("Categoría eliminada.", Severity.Success);
+            aEliminar = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;      // 409: tiene productos
+            aEliminar = null;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo eliminar la categoría.";
+            LogApp.Reportar(ex, "Categorias.Eliminar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

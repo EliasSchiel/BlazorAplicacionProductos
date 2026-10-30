@@ -1,0 +1,70 @@
+@page "/login"
+@inject AuthService Auth
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" Class="mb-3">Iniciar sesión</MudText>
+
+<MudPaper Class="pa-4" Style="max-width:420px;">
+    <MudTextField @bind-Value="usuario" Label="Usuario" Variant="Variant.Outlined" Immediate="true" Class="mb-3" />
+    <MudTextField @bind-Value="password" Label="Contraseña" Variant="Variant.Outlined" Immediate="true"
+                  InputType="InputType.Password" OnKeyDown="OnKeyDown" Class="mb-3" />
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="IniciarAsync" Disabled="cargando" FullWidth="true">
+        @(cargando ? "Ingresando..." : "Ingresar")
+    </MudButton>
+    <MudButton Variant="Variant.Text" Href="registro" FullWidth="true" Class="mt-2">Crear cuenta de cliente</MudButton>
+</MudPaper>
+
+@code {
+    private string usuario = "";
+    private string password = "";
+    private string? error;
+    private bool cargando;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (Auth.EstaLogueado) Nav.NavigateTo("/productos");
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await IniciarAsync();
+    }
+
+    private async Task IniciarAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(usuario) || string.IsNullOrWhiteSpace(password))
+        {
+            error = "Completá usuario y contraseña.";
+            return;
+        }
+
+        cargando = true;
+        try
+        {
+            await Auth.LoginAsync(usuario.Trim(), password);
+            Nav.NavigateTo("/productos");
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;                       // credenciales mal, sin conexion, etc.
+        }
+        catch (Exception ex)
+        {
+            error = "Ocurrió un error inesperado.";
+            LogApp.Reportar(ex, "Login");             // queda en LogErrores con Origen = "App"
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+}

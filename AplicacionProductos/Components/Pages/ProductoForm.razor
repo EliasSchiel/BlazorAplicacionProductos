@@ -1,0 +1,395 @@
+@page "/productos/nuevo"
+@page "/productos/{Id:int}/editar"
+@inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject CategoriaService CategoriaSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-3">@(Id is null ? "Nuevo producto" : "Editar producto")</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+    }
+}
+else if (!Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Warning">Solo Admin y Operador pueden administrar productos.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudTextField @bind-Value="form.Nombre" Label="Nombre" Variant="Variant.Outlined" MaxLength="150" Class="mb-3" />
+        <MudTextField @bind-Value="form.Descripcion" Label="Descripción" Variant="Variant.Outlined" Lines="3" MaxLength="1000" Class="mb-3" />
+
+        <MudGrid>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="decimal" @bind-Value="form.Precio" Label="Precio" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudNumericField T="int" @bind-Value="form.StockMinimo" Label="Stock mínimo" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="4">
+                <MudSelect T="int" @bind-Value="form.IdCategoria" Label="Categoría" Variant="Variant.Outlined">
+                    <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                    @foreach (var c in categorias)
+                    {
+                        <MudSelectItem T="int" Value="@c.IdCategoria">@c.Nombre</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+        </MudGrid>
+
+        @* Alta rapida de categoria sin salir del formulario *@
+        <div class="mt-2">
+            @if (!creandoCategoria)
+            {
+                <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="() => creandoCategoria = true">Nueva categoría</MudButton>
+            }
+            else
+            {
+                <div class="d-flex flex-wrap gap-2 align-center">
+                    <MudTextField @bind-Value="nuevaCategoria" Label="Nombre de la nueva categoría" Variant="Variant.Outlined"
+                                  Immediate="true" MaxLength="80" />
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CrearCategoriaAsync" Disabled="guardandoCategoria">Crear</MudButton>
+                    <MudButton Variant="Variant.Text" OnClick="CancelarCategoria">Cancelar</MudButton>
+                </div>
+            }
+        </div>
+
+        @if (producto is not null)
+        {
+            <MudSwitch T="bool" @bind-Value="form.Activo" Label="Activo" Color="Color.Primary" Class="mt-2" />
+            <MudText Typo="Typo.body2" Class="mt-1">
+                Stock actual: <strong>@producto.Stock</strong>
+                (el stock no se edita acá: entra con un Ingreso y sale con una Venta)
+            </MudText>
+        }
+
+        @if (error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+        }
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GuardarAsync" Disabled="guardando">
+                @(guardando ? "Guardando..." : "Guardar")
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="Volver">Volver</MudButton>
+            @if (producto is not null && Auth.Rol == "Admin" && !confirmandoBaja)
+            {
+                <MudButton Variant="Variant.Outlined" Color="Color.Error" OnClick="() => confirmandoBaja = true">Dar de baja</MudButton>
+            }
+        </div>
+
+        @if (confirmandoBaja)
+        {
+            <MudAlert Severity="Severity.Warning" Class="mt-3">
+                El producto quedará inactivo (no se borra, para conservar el historial de ventas e ingresos). ¿Confirmás?
+                <div class="mt-2">
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="DarDeBajaAsync" Disabled="guardando">Sí, dar de baja</MudButton>
+                    <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => confirmandoBaja = false">Cancelar</MudButton>
+                </div>
+            </MudAlert>
+        }
+    </MudPaper>
+
+    @if (producto is not null)
+    {
+        <MudPaper Class="pa-4">
+            <MudText Typo="Typo.h6" Class="mb-2">Imágenes</MudText>
+
+            <MudFileUpload T="IBrowserFile" Accept=".jpg,.jpeg,.png,.webp" FilesChanged="SubirImagenAsync">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload" Disabled="subiendo">
+                        @(subiendo ? "Subiendo..." : "Subir imagen")
+                    </MudButton>
+                </ActivatorContent>
+            </MudFileUpload>
+            <MudText Typo="Typo.caption" Class="ml-2">JPG, PNG o WEBP. Máximo 5 MB.</MudText>
+
+            @if (producto.Imagenes.Count == 0)
+            {
+                <MudText Class="mt-3">Este producto todavía no tiene imágenes.</MudText>
+            }
+            else
+            {
+                <MudGrid Class="mt-2">
+                    @foreach (var img in producto.Imagenes)
+                    {
+                        <MudItem xs="12" sm="6" md="4" @key="img.IdProductoImagen">
+                            <MudCard>
+                                <MudCardMedia Image="@ApiConfig.ResolverUrl(img.Url)" Height="150" />
+                                <MudCardActions>
+                                    @if (img.EsPrincipal)
+                                    {
+                                        <MudText Typo="Typo.body2" Color="Color.Success" Class="ml-2">Principal</MudText>
+                                    }
+                                    else
+                                    {
+                                        <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => MarcarPrincipalAsync(img)">Hacer principal</MudButton>
+                                    }
+                                    <MudSpacer />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => EliminarImagenAsync(img)" />
+                                </MudCardActions>
+                            </MudCard>
+                        </MudItem>
+                    }
+                </MudGrid>
+            }
+        </MudPaper>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info">Guardá el producto para poder cargarle imágenes.</MudAlert>
+    }
+}
+
+@code {
+    private const long MaxBytesImagen = 5 * 1024 * 1024;
+
+    [Parameter] public int? Id { get; set; }
+
+    private ProductoGuardarRequest form = new();
+    private ProductoDto? producto;
+    private List<CategoriaDto> categorias = new();
+    private int? idCargado;
+    private bool inicializado;
+    private bool listo;
+    private bool guardando;
+    private bool subiendo;
+    private bool confirmandoBaja;
+    private bool creandoCategoria;
+    private bool guardandoCategoria;
+    private string nuevaCategoria = "";
+    private string? error;
+
+    // OnParametersSet (y no OnInitialized): despues de crear un producto se navega de /nuevo a /{id}/editar
+    // y Blazor reutiliza este mismo componente, solo cambia el parametro Id.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!inicializado)
+        {
+            await Auth.InicializarAsync();
+            if (!Auth.EstaLogueado)
+            {
+                Nav.NavigateTo("/login");
+                return;
+            }
+            try { categorias = await CategoriaSvc.GetAsync(); }
+            catch (ApiException ex) { error = ex.Message; }
+            inicializado = true;
+        }
+
+        if (!listo || idCargado != Id) await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        error = null;
+        confirmandoBaja = false;
+        try
+        {
+            if (Id is null)
+            {
+                producto = null;
+                form = new ProductoGuardarRequest();
+            }
+            else
+            {
+                producto = await ProductoSvc.GetByIdAsync(Id.Value);
+                if (producto is null) { error = "El producto no existe."; return; }
+                form = new ProductoGuardarRequest
+                {
+                    Nombre = producto.Nombre,
+                    Descripcion = producto.Descripcion,
+                    Precio = producto.Precio,
+                    StockMinimo = producto.StockMinimo,
+                    IdCategoria = producto.IdCategoria,
+                    Activo = producto.Activo
+                };
+            }
+            idCargado = Id;
+            listo = true;
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cargar el producto.";
+            LogApp.Reportar(ex, "ProductoForm");
+        }
+    }
+
+    private async Task GuardarAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(form.Nombre)) { error = "El nombre es obligatorio."; return; }
+        if (form.Precio <= 0) { error = "El precio debe ser mayor a 0."; return; }
+        if (form.StockMinimo < 0) { error = "El stock mínimo no puede ser negativo."; return; }
+        if (form.IdCategoria <= 0) { error = "Elegí una categoría."; return; }
+
+        guardando = true;
+        try
+        {
+            form.Nombre = form.Nombre.Trim();
+            if (Id is null)
+            {
+                var creado = await ProductoSvc.CrearAsync(form);
+                Snackbar.Add("Producto creado. Ahora podés cargarle imágenes.", Severity.Success);
+                if (creado is not null) Nav.NavigateTo($"/productos/{creado.IdProducto}/editar");
+            }
+            else
+            {
+                await ProductoSvc.ActualizarAsync(Id.Value, form);
+                producto = await ProductoSvc.GetByIdAsync(Id.Value);
+                Snackbar.Add("Cambios guardados.", Severity.Success);
+            }
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo guardar el producto.";
+            LogApp.Reportar(ex, "ProductoForm.Guardar");
+        }
+        finally
+        {
+            guardando = false;
+        }
+    }
+
+    private async Task DarDeBajaAsync()
+    {
+        if (Id is null) return;
+        guardando = true;
+        try
+        {
+            await ProductoSvc.DarDeBajaAsync(Id.Value);
+            Snackbar.Add("Producto dado de baja.", Severity.Success);
+            Nav.NavigateTo("/productos");
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo dar de baja el producto.";
+            LogApp.Reportar(ex, "ProductoForm.Baja");
+        }
+        finally
+        {
+            guardando = false;
+            confirmandoBaja = false;
+        }
+    }
+
+    private async Task SubirImagenAsync(IBrowserFile archivo)
+    {
+        if (archivo is null || Id is null) return;
+        error = null;
+
+        if (archivo.Size > MaxBytesImagen)
+        {
+            Snackbar.Add("La imagen supera el máximo de 5 MB.", Severity.Warning);
+            return;
+        }
+
+        subiendo = true;
+        try
+        {
+            await using var stream = archivo.OpenReadStream(MaxBytesImagen);
+            await ProductoSvc.SubirImagenAsync(Id.Value, stream, archivo.Name, archivo.ContentType);
+            producto = await ProductoSvc.GetByIdAsync(Id.Value);
+            Snackbar.Add("Imagen subida.", Severity.Success);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo subir la imagen.";
+            LogApp.Reportar(ex, "ProductoForm.SubirImagen");
+        }
+        finally
+        {
+            subiendo = false;
+        }
+    }
+
+    private Task MarcarPrincipalAsync(ProductoImagenDto img)
+        => EjecutarImagenAsync(() => ProductoSvc.MarcarImagenPrincipalAsync(Id!.Value, img.IdProductoImagen), "Imagen principal actualizada.");
+
+    private Task EliminarImagenAsync(ProductoImagenDto img)
+        => EjecutarImagenAsync(() => ProductoSvc.EliminarImagenAsync(Id!.Value, img.IdProductoImagen), "Imagen eliminada.");
+
+    private async Task EjecutarImagenAsync(Func<Task> accion, string mensajeOk)
+    {
+        if (Id is null) return;
+        error = null;
+        try
+        {
+            await accion();
+            producto = await ProductoSvc.GetByIdAsync(Id.Value);
+            Snackbar.Add(mensajeOk, Severity.Success);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo completar la operación.";
+            LogApp.Reportar(ex, "ProductoForm.Imagen");
+        }
+    }
+
+    private async Task CrearCategoriaAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(nuevaCategoria)) { error = "Escribí el nombre de la categoría."; return; }
+
+        guardandoCategoria = true;
+        try
+        {
+            var creada = await CategoriaSvc.CrearAsync(new CategoriaGuardarRequest { Nombre = nuevaCategoria.Trim() });
+            categorias = await CategoriaSvc.GetAsync();
+            if (creada is not null) form.IdCategoria = creada.IdCategoria;   // queda elegida en el desplegable
+            Snackbar.Add("Categoría creada.", Severity.Success);
+            nuevaCategoria = "";
+            creandoCategoria = false;
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo crear la categoría.";
+            LogApp.Reportar(ex, "ProductoForm.Categoria");
+        }
+        finally
+        {
+            guardandoCategoria = false;
+        }
+    }
+
+    private void CancelarCategoria()
+    {
+        creandoCategoria = false;
+        nuevaCategoria = "";
+    }
+
+    private void Volver() => Nav.NavigateTo("/productos");
+}

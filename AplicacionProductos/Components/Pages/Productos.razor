@@ -1,0 +1,180 @@
+@page "/productos"
+@using System.Globalization
+@inject AuthService Auth
+@inject ProductoService ProductoSvc
+@inject CategoriaService CategoriaSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">Productos</MudText>
+    @if (Auth.EsStaff)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="Nuevo">Nuevo</MudButton>
+    }
+</div>
+
+<MudGrid Class="mb-2">
+    <MudItem xs="12" sm="6">
+        <MudTextField @bind-Value="busqueda" Label="Buscar producto" Variant="Variant.Outlined" Immediate="true"
+                      OnKeyDown="OnKeyDown" Adornment="Adornment.End" AdornmentIcon="@Icons.Material.Filled.Search"
+                      OnAdornmentClick="BuscarAsync" />
+    </MudItem>
+    <MudItem xs="8" sm="4">
+        <MudSelect T="int" @bind-Value="idCategoria" Label="Categoría" Variant="Variant.Outlined">
+            <MudSelectItem T="int" Value="0">Todas</MudSelectItem>
+            @foreach (var c in categorias)
+            {
+                <MudSelectItem T="int" Value="@c.IdCategoria">@c.Nombre</MudSelectItem>
+            }
+        </MudSelect>
+    </MudItem>
+    <MudItem xs="4" sm="2">
+        <MudButton Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" OnClick="BuscarAsync" Class="mt-2">Buscar</MudButton>
+    </MudItem>
+    @if (Auth.EsStaff)
+    {
+        <MudItem xs="12">
+            <MudSwitch T="bool" Value="incluirInactivos" ValueChanged="CambiarInactivosAsync" Label="Ver también productos inactivos" Color="Color.Primary" />
+        </MudItem>
+    }
+</MudGrid>
+
+@if (error is not null)
+{
+    <MudAlert Severity="Severity.Error" Class="mb-3">
+        @error
+        <MudButton Size="Size.Small" Variant="Variant.Text" OnClick="CargarAsync">Reintentar</MudButton>
+    </MudAlert>
+}
+
+@if (cargando)
+{
+    <MudProgressLinear Indeterminate="true" Class="my-3" />
+}
+else if (pagina is null || pagina.Items.Count == 0)
+{
+    @if (error is null)
+    {
+        <MudText>No se encontraron productos.</MudText>
+    }
+}
+else
+{
+    <MudGrid>
+        @foreach (var p in pagina.Items)
+        {
+            <MudItem xs="12" sm="6" md="4" @key="p.IdProducto">
+                <MudCard>
+                    @if (!string.IsNullOrEmpty(p.ImagenPrincipalUrl))
+                    {
+                        <MudCardMedia Image="@ApiConfig.ResolverUrl(p.ImagenPrincipalUrl)" Height="160" />
+                    }
+                    <MudCardContent>
+                        <MudText Typo="Typo.h6">@p.Nombre</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@p.CategoriaNombre</MudText>
+                        <MudText Typo="Typo.subtitle1">$ @p.Precio.ToString("N2", Cultura)</MudText>
+                        <MudText Typo="Typo.body2">Stock: @p.Stock</MudText>
+                        @if (p.StockBajo)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Error">Stock bajo</MudText>
+                        }
+                        @if (!p.Activo)
+                        {
+                            <MudText Typo="Typo.body2" Color="Color.Warning">Inactivo</MudText>
+                        }
+                    </MudCardContent>
+                    @if (Auth.EsStaff)
+                    {
+                        <MudCardActions>
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="() => Editar(p.IdProducto)">Editar</MudButton>
+                        </MudCardActions>
+                    }
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+
+    <div class="d-flex justify-center mt-4">
+        <MudPagination Count="@Math.Max(pagina.TotalPages, 1)" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" />
+    </div>
+}
+
+@code {
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+    private const int TamanoPagina = 9;
+
+    private PagedResult<ProductoDto>? pagina;
+    private List<CategoriaDto> categorias = new();
+    private string busqueda = "";
+    private int idCategoria;
+    private bool incluirInactivos;
+    private int paginaActual = 1;
+    private bool cargando = true;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        try { categorias = await CategoriaSvc.GetAsync(); }
+        catch (ApiException) { /* el filtro de categorias es opcional */ }
+
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        error = null;
+        try
+        {
+            pagina = await ProductoSvc.GetPaginaAsync(paginaActual, TamanoPagina, busqueda, idCategoria, incluirInactivos);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar los productos.";
+            LogApp.Reportar(ex, "Productos");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task BuscarAsync()
+    {
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task CambiarInactivosAsync(bool valor)
+    {
+        incluirInactivos = valor;
+        await BuscarAsync();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await BuscarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+    private void Nuevo() => Nav.NavigateTo("/productos/nuevo");
+
+    private void Editar(int id) => Nav.NavigateTo($"/productos/{id}/editar");
+}

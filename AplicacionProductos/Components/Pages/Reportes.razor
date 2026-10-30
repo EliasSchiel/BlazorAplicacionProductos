@@ -1,0 +1,139 @@
+@page "/reportes"
+@inject AuthService Auth
+@inject ReporteService ReporteSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+
+<MudText Typo="Typo.h5" Class="mb-3">Reportes</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Warning">Los reportes están disponibles solo para los roles Admin y Operador.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Label="Desde" @bind-Date="desde" Variant="Variant.Outlined" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudDatePicker Label="Hasta" @bind-Date="hasta" Variant="Variant.Outlined" Clearable="true" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudSelect T="string" @bind-Value="estado" Label="Estado (solo ventas)" Variant="Variant.Outlined">
+                    <MudSelectItem T="string" Value="@("")">Todos</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Pendiente")">Pendiente</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Pagada")">Pagada</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Cancelada")">Cancelada</MudSelectItem>
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="email" Label="Enviar por mail a" Variant="Variant.Outlined"
+                              InputType="InputType.Email" Immediate="true" />
+            </MudItem>
+        </MudGrid>
+        <MudText Typo="Typo.caption" Class="mt-2">Sin fechas se usa el mes actual. Las fechas aplican a ingresos y ventas.</MudText>
+    </MudPaper>
+
+    @if (mensaje is not null)
+    {
+        <MudAlert Severity="Severity.Success" Class="mb-3">@mensaje</MudAlert>
+    }
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    @foreach (var r in lista)
+    {
+        <MudCard Class="mb-3">
+            <MudCardContent>
+                <MudText Typo="Typo.h6">@r.Nombre</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@r.Descripcion</MudText>
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="() => VerAsync(r.Tipo)" Disabled="@(ocupado is not null)">
+                    @(ocupado == r.Tipo ? "Procesando..." : "Ver PDF")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="() => EnviarAsync(r.Tipo)" Disabled="@(ocupado is not null)">
+                    Enviar por mail
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    }
+}
+
+@code {
+    private record Reporte(string Tipo, string Nombre, string Descripcion);
+
+    private readonly Reporte[] lista =
+    {
+        new("stock", "Stock", "Productos activos con su stock, valor y marca de stock bajo."),
+        new("stock-bajo", "Stock bajo", "Productos con stock menor o igual al mínimo."),
+        new("ingresos", "Ingresos de mercadería", "Compras a proveedores del período, con sus detalles."),
+        new("ventas", "Ventas", "Ventas del período con cliente, estado y total general."),
+    };
+
+    private DateTime? desde;
+    private DateTime? hasta;
+    private string estado = "";
+    private string email = "";
+    private string? ocupado;      // tipo del reporte que se esta procesando
+    private string? mensaje;
+    private string? error;
+    private bool listo;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+    }
+
+    private Task VerAsync(string tipo)
+        => EjecutarAsync(tipo, async () => await ReporteSvc.AbrirAsync(tipo, desde, hasta, estado));
+
+    private async Task EnviarAsync(string tipo)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            mensaje = null;
+            error = "Ingresá el mail de destino.";
+            return;
+        }
+        await EjecutarAsync(tipo, async () => mensaje = await ReporteSvc.EnviarAsync(tipo, email.Trim(), desde, hasta, estado));
+    }
+
+    private async Task EjecutarAsync(string tipo, Func<Task> accion)
+    {
+        mensaje = null;
+        error = null;
+        ocupado = tipo;
+        try
+        {
+            await accion();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo completar la operación.";
+            LogApp.Reportar(ex, "Reportes");
+        }
+        finally
+        {
+            ocupado = null;
+        }
+    }
+}
