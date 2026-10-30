@@ -1,0 +1,460 @@
+@page "/ventas"
+@using System.Globalization
+@inject AuthService Auth
+@inject VentaService VentaSvc
+@inject ClienteService ClienteSvc
+@inject ProductoService ProductoSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<div class="d-flex justify-space-between align-center mb-3">
+    <MudText Typo="Typo.h5">@(Auth.EsStaff ? "Ventas" : "Mis compras")</MudText>
+    @if (listo && !nuevaVisible)
+    {
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" OnClick="NuevaVenta">
+            @(Auth.EsStaff ? "Nueva venta" : "Comprar")
+        </MudButton>
+    }
+</div>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    @if (nuevaVisible)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">@(Auth.EsStaff ? "Nueva venta (mostrador)" : "Nueva compra")</MudText>
+
+            @if (Auth.EsStaff)
+            {
+                <MudSelect T="int" @bind-Value="idCliente" Label="Cliente" Variant="Variant.Outlined" Class="mb-3">
+                    <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                    @foreach (var c in clientes)
+                    {
+                        <MudSelectItem T="int" Value="@c.IdCliente">@c.Apellido, @c.Nombre</MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="int" @bind-Value="lineaProducto" Label="Producto" Variant="Variant.Outlined">
+                        <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                        @foreach (var p in productos)
+                        {
+                            <MudSelectItem T="int" Value="@p.IdProducto">@p.Nombre ($ @p.Precio.ToString("N2", Cultura) · stock @p.Stock)</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudNumericField T="int" @bind-Value="lineaCantidad" Label="Cantidad" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="6" sm="3">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AgregarLinea" FullWidth="true" Class="mt-2">Agregar</MudButton>
+                </MudItem>
+            </MudGrid>
+
+            @if (lineas.Count > 0)
+            {
+                <MudTable Items="lineas" Dense="true" Class="mt-3">
+                    <HeaderContent>
+                        <MudTh>Producto</MudTh>
+                        <MudTh>Cant.</MudTh>
+                        <MudTh>Subtotal</MudTh>
+                        <MudTh></MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="Producto">@context.Nombre</MudTd>
+                        <MudTd DataLabel="Cant.">@context.Cantidad</MudTd>
+                        <MudTd DataLabel="Subtotal">$ @((context.Cantidad * context.Precio).ToString("N2", Cultura))</MudTd>
+                        <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => lineas.Remove(context)" /></MudTd>
+                    </RowTemplate>
+                </MudTable>
+                <MudText Typo="Typo.h6" Class="mt-2">Total: $ @(lineas.Sum(l => l.Cantidad * l.Precio).ToString("N2", Cultura))</MudText>
+                <MudText Typo="Typo.caption">El precio final lo fija el servidor al confirmar. La venta queda Pendiente hasta que se pague.</MudText>
+            }
+
+            <MudTextField @bind-Value="observaciones" Label="Observaciones (opcional)" Variant="Variant.Outlined" MaxLength="500" Class="mt-3" />
+
+            @if (errorForm is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@errorForm</MudAlert>
+            }
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ConfirmarAsync" Disabled="ocupado">
+                    @(ocupado ? "Confirmando..." : "Confirmar venta")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="CerrarNueva">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    @if (pagando is not null)
+    {
+        <MudPaper Class="pa-4 mb-4">
+            <MudText Typo="Typo.h6" Class="mb-2">Pagar venta #@pagando.IdVenta ($ @pagando.Total.ToString("N2", Cultura))</MudText>
+            <MudSelect T="int" @bind-Value="idMetodoPago" Label="Método de pago" Variant="Variant.Outlined" Class="mb-3">
+                <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                @foreach (var m in metodosPago)
+                {
+                    <MudSelectItem T="int" Value="@m.IdMetodoPago">@m.Nombre</MudSelectItem>
+                }
+            </MudSelect>
+            <MudTextField @bind-Value="numeroTarjeta" Label="Número de tarjeta (simulado)" Variant="Variant.Outlined"
+                          HelperText="Pago simulado: una tarjeta que termina en 0000 se rechaza." MaxLength="19" />
+
+            @if (errorPago is not null)
+            {
+                <MudAlert Severity="Severity.Error" Class="mt-3">@errorPago</MudAlert>
+            }
+
+            <div class="d-flex flex-wrap gap-2 mt-3">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="PagarAsync" Disabled="ocupado">
+                    @(ocupado ? "Procesando..." : "Pagar")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" OnClick="() => pagando = null">Cancelar</MudButton>
+            </div>
+        </MudPaper>
+    }
+
+    <div class="mb-2" style="max-width:260px;">
+        <MudSelect T="string" Value="filtroEstado" ValueChanged="CambiarFiltroAsync" Label="Estado" Variant="Variant.Outlined">
+            <MudSelectItem T="string" Value="@("")">Todos</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Pendiente")">Pendiente</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Pagada")">Pagada</MudSelectItem>
+            <MudSelectItem T="string" Value="@("Cancelada")">Cancelada</MudSelectItem>
+        </MudSelect>
+    </div>
+
+    @if (error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Class="mb-3">@error</MudAlert>
+    }
+
+    @if (cargando)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (pagina is null || pagina.Items.Count == 0)
+    {
+        <MudText>No hay ventas para mostrar.</MudText>
+    }
+    else
+    {
+        <MudTable Items="pagina.Items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Venta</MudTh>
+                <MudTh>Estado</MudTh>
+                <MudTh>Total</MudTh>
+                <MudTh></MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Venta">
+                    #@context.IdVenta · @context.Fecha.ToString("dd/MM/yyyy HH:mm")
+                    @if (Auth.EsStaff)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.ClienteNombre</MudText>
+                    }
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @(string.Join(", ", context.Detalles.Select(d => $"{d.ProductoNombre} x{d.Cantidad}")))
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Estado"><MudText Color="ColorEstado(context.Estado)">@context.Estado</MudText></MudTd>
+                <MudTd DataLabel="Total">$ @context.Total.ToString("N2", Cultura)</MudTd>
+                <MudTd>
+                    @if (context.Estado == "Pendiente")
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="() => AbrirPago(context)">Pagar</MudButton>
+                    }
+                    @if (context.Estado == "Pendiente" || (context.Estado == "Pagada" && Auth.EsAdmin))
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small" OnClick="() => aCancelar = context">Cancelar</MudButton>
+                    }
+                </MudTd>
+            </RowTemplate>
+        </MudTable>
+        <div class="d-flex justify-center mt-3">
+            <MudPagination Count="@Math.Max(pagina.TotalPages, 1)" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" />
+        </div>
+    }
+
+    @if (aCancelar is not null)
+    {
+        <MudAlert Severity="Severity.Warning" Class="mt-3">
+            ¿Cancelar la venta <strong>#@aCancelar.IdVenta</strong>? El stock de sus productos vuelve al inventario.
+            <div class="mt-2">
+                <MudButton Variant="Variant.Filled" Color="Color.Error" Size="Size.Small" OnClick="CancelarVentaAsync" Disabled="ocupado">Sí, cancelar venta</MudButton>
+                <MudButton Variant="Variant.Text" Size="Size.Small" OnClick="() => aCancelar = null">Volver</MudButton>
+            </div>
+        </MudAlert>
+    }
+}
+
+@code {
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+    private const int TamanoPagina = 8;
+
+    private class Linea
+    {
+        public int IdProducto { get; set; }
+        public string Nombre { get; set; } = "";
+        public decimal Precio { get; set; }
+        public int Cantidad { get; set; }
+    }
+
+    private PagedResult<VentaDto>? pagina;
+    private int paginaActual = 1;
+    private string filtroEstado = "";
+    private bool listo;
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    // nueva venta
+    private bool nuevaVisible;
+    private List<ClienteDto> clientes = new();
+    private List<ProductoDto> productos = new();
+    private List<Linea> lineas = new();
+    private int idCliente;
+    private int lineaProducto;
+    private int lineaCantidad = 1;
+    private string? observaciones;
+    private string? errorForm;
+
+    // pago
+    private VentaDto? pagando;
+    private List<MetodoPagoDto> metodosPago = new();
+    private int idMetodoPago;
+    private string? numeroTarjeta;
+    private string? errorPago;
+
+    private VentaDto? aCancelar;
+
+    private static Color ColorEstado(string estado) => estado switch
+    {
+        "Pagada" => Color.Success,
+        "Cancelada" => Color.Error,
+        _ => Color.Warning
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        await CargarAsync();
+    }
+
+    private async Task CargarAsync()
+    {
+        cargando = true;
+        try
+        {
+            pagina = await VentaSvc.GetPaginaAsync(paginaActual, TamanoPagina, filtroEstado);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudieron cargar las ventas.";
+            LogApp.Reportar(ex, "Ventas");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task CambiarFiltroAsync(string valor)
+    {
+        filtroEstado = valor;
+        paginaActual = 1;
+        await CargarAsync();
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarAsync();
+    }
+
+    // ---------- Nueva venta ----------
+
+    private async Task NuevaVenta()
+    {
+        errorForm = null;
+        error = null;
+        pagando = null;
+        try
+        {
+            // se recargan para ver el stock actual
+            productos = (await ProductoSvc.GetPaginaAsync(1, 100))?.Items.Where(p => p.Disponible).ToList() ?? new();
+            if (Auth.EsStaff) clientes = (await ClienteSvc.GetPaginaAsync(1, 100))?.Items ?? new();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            return;
+        }
+        lineas = new();
+        idCliente = 0;
+        lineaProducto = 0;
+        lineaCantidad = 1;
+        observaciones = null;
+        nuevaVisible = true;
+    }
+
+    private void CerrarNueva()
+    {
+        nuevaVisible = false;
+        errorForm = null;
+    }
+
+    private void AgregarLinea()
+    {
+        errorForm = null;
+        var producto = productos.FirstOrDefault(p => p.IdProducto == lineaProducto);
+        if (producto is null) { errorForm = "Elegí un producto."; return; }
+        if (lineaCantidad < 1) { errorForm = "La cantidad debe ser al menos 1."; return; }
+
+        var existente = lineas.FirstOrDefault(l => l.IdProducto == producto.IdProducto);
+        var totalPedido = lineaCantidad + (existente?.Cantidad ?? 0);
+        if (totalPedido > producto.Stock) { errorForm = $"Stock insuficiente de '{producto.Nombre}'. Disponible: {producto.Stock}."; return; }
+
+        if (existente is not null) existente.Cantidad = totalPedido;
+        else lineas.Add(new Linea { IdProducto = producto.IdProducto, Nombre = producto.Nombre, Precio = producto.Precio, Cantidad = lineaCantidad });
+
+        lineaProducto = 0;
+        lineaCantidad = 1;
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        errorForm = null;
+        if (Auth.EsStaff && idCliente <= 0) { errorForm = "Elegí el cliente de la venta."; return; }
+        if (lineas.Count == 0) { errorForm = "Agregá al menos un producto."; return; }
+
+        ocupado = true;
+        try
+        {
+            await VentaSvc.CrearAsync(new VentaCrearRequest
+            {
+                IdCliente = Auth.EsStaff ? idCliente : null,
+                Observaciones = string.IsNullOrWhiteSpace(observaciones) ? null : observaciones.Trim(),
+                Items = lineas.Select(l => new VentaItemRequest { IdProducto = l.IdProducto, Cantidad = l.Cantidad }).ToList()
+            });
+            Snackbar.Add("Venta creada. Queda pendiente de pago.", Severity.Success);
+            CerrarNueva();
+            paginaActual = 1;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            errorForm = ex.Message;      // ej: "Stock insuficiente de ..."
+        }
+        catch (Exception ex)
+        {
+            errorForm = "No se pudo crear la venta.";
+            LogApp.Reportar(ex, "Ventas.Crear");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    // ---------- Pago ----------
+
+    private async Task AbrirPago(VentaDto venta)
+    {
+        errorPago = null;
+        error = null;
+        aCancelar = null;
+        try
+        {
+            if (metodosPago.Count == 0) metodosPago = await VentaSvc.GetMetodosPagoAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            return;
+        }
+        idMetodoPago = 0;
+        numeroTarjeta = null;
+        pagando = venta;
+    }
+
+    private async Task PagarAsync()
+    {
+        if (pagando is null) return;
+        errorPago = null;
+        if (idMetodoPago <= 0) { errorPago = "Elegí un método de pago."; return; }
+
+        ocupado = true;
+        try
+        {
+            await VentaSvc.PagarAsync(pagando.IdVenta, new PagoRequest
+            {
+                IdMetodoPago = idMetodoPago,
+                NumeroTarjeta = string.IsNullOrWhiteSpace(numeroTarjeta) ? null : numeroTarjeta.Trim()
+            });
+            Snackbar.Add("Pago aprobado.", Severity.Success);
+            pagando = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            errorPago = ex.Message;      // incluye el rechazo del pago simulado (422)
+        }
+        catch (Exception ex)
+        {
+            errorPago = "No se pudo procesar el pago.";
+            LogApp.Reportar(ex, "Ventas.Pagar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    // ---------- Cancelar ----------
+
+    private async Task CancelarVentaAsync()
+    {
+        if (aCancelar is null) return;
+        error = null;
+        ocupado = true;
+        try
+        {
+            await VentaSvc.CancelarAsync(aCancelar.IdVenta);
+            Snackbar.Add("Venta cancelada. El stock fue devuelto.", Severity.Success);
+            aCancelar = null;
+            await CargarAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+            aCancelar = null;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cancelar la venta.";
+            LogApp.Reportar(ex, "Ventas.Cancelar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}

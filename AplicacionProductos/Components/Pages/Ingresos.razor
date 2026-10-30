@@ -1,0 +1,324 @@
+@page "/ingresos"
+@using System.Globalization
+@inject AuthService Auth
+@inject IngresoService IngresoSvc
+@inject ProveedorService ProveedorSvc
+@inject ProductoService ProductoSvc
+@inject LogService LogApp
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<MudText Typo="Typo.h5" Class="mb-1">Ingresos de mercadería</MudText>
+<MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Cada ingreso suma stock a los productos que incluye.</MudText>
+
+@if (!listo)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!Auth.EsStaff)
+{
+    <MudAlert Severity="Severity.Warning">Solo Admin y Operador pueden registrar ingresos.</MudAlert>
+}
+else
+{
+    <MudPaper Class="pa-4 mb-4">
+        <MudText Typo="Typo.h6" Class="mb-2">Nuevo ingreso</MudText>
+
+        <MudSelect T="int" @bind-Value="idProveedor" Label="Proveedor" Variant="Variant.Outlined" Class="mb-1">
+            <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+            @foreach (var p in proveedores)
+            {
+                <MudSelectItem T="int" Value="@p.IdProveedor">@p.RazonSocial</MudSelectItem>
+            }
+        </MudSelect>
+
+        @* Alta rapida de proveedor (mismo criterio que la alta rapida de categoria) *@
+        @if (!creandoProveedor)
+        {
+            <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.Add" OnClick="() => creandoProveedor = true">Nuevo proveedor</MudButton>
+        }
+        else
+        {
+            <div class="d-flex flex-wrap gap-2 align-center mb-2">
+                <MudTextField @bind-Value="nuevoProveedor.RazonSocial" Label="Razón social" Variant="Variant.Outlined" Immediate="true" MaxLength="150" />
+                <MudTextField @bind-Value="nuevoProveedor.Cuit" Label="CUIT (opcional)" Variant="Variant.Outlined" Immediate="true" MaxLength="20" />
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="CrearProveedorAsync" Disabled="ocupado">Crear</MudButton>
+                <MudButton Variant="Variant.Text" OnClick="() => creandoProveedor = false">Cancelar</MudButton>
+            </div>
+        }
+
+        <MudGrid Class="mt-1">
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="comprobante" Label="N° de comprobante (opcional)" Variant="Variant.Outlined" MaxLength="30" />
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <MudTextField @bind-Value="observaciones" Label="Observaciones (opcional)" Variant="Variant.Outlined" MaxLength="500" />
+            </MudItem>
+        </MudGrid>
+
+        <MudText Typo="Typo.subtitle1" Class="mt-4 mb-1">Productos que ingresan</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="5">
+                <MudSelect T="int" @bind-Value="lineaProducto" Label="Producto" Variant="Variant.Outlined">
+                    <MudSelectItem T="int" Value="0">Seleccioná...</MudSelectItem>
+                    @foreach (var p in productos)
+                    {
+                        <MudSelectItem T="int" Value="@p.IdProducto">@p.Nombre (stock @p.Stock)</MudSelectItem>
+                    }
+                </MudSelect>
+            </MudItem>
+            <MudItem xs="6" sm="2">
+                <MudNumericField T="int" @bind-Value="lineaCantidad" Label="Cantidad" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="6" sm="3">
+                <MudNumericField T="decimal" @bind-Value="lineaCosto" Label="Costo unitario" Variant="Variant.Outlined" />
+            </MudItem>
+            <MudItem xs="12" sm="2">
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="AgregarLinea" FullWidth="true" Class="mt-2">Agregar</MudButton>
+            </MudItem>
+        </MudGrid>
+
+        @if (lineas.Count > 0)
+        {
+            <MudTable Items="lineas" Dense="true" Class="mt-3">
+                <HeaderContent>
+                    <MudTh>Producto</MudTh>
+                    <MudTh>Cant.</MudTh>
+                    <MudTh>Costo</MudTh>
+                    <MudTh>Subtotal</MudTh>
+                    <MudTh></MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Producto">@context.Nombre</MudTd>
+                    <MudTd DataLabel="Cant.">@context.Cantidad</MudTd>
+                    <MudTd DataLabel="Costo">$ @context.Costo.ToString("N2", Cultura)</MudTd>
+                    <MudTd DataLabel="Subtotal">$ @((context.Cantidad * context.Costo).ToString("N2", Cultura))</MudTd>
+                    <MudTd><MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="() => lineas.Remove(context)" /></MudTd>
+                </RowTemplate>
+            </MudTable>
+            <MudText Typo="Typo.h6" Class="mt-2">Total: $ @(TotalLineas.ToString("N2", Cultura))</MudText>
+        }
+
+        @if (error is not null)
+        {
+            <MudAlert Severity="Severity.Error" Class="mt-3">@error</MudAlert>
+        }
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="RegistrarAsync" Disabled="ocupado" Class="mt-3">
+            @(ocupado ? "Registrando..." : "Registrar ingreso")
+        </MudButton>
+    </MudPaper>
+
+    <MudText Typo="Typo.h6" Class="mb-2">Historial</MudText>
+    @if (cargando)
+    {
+        <MudProgressLinear Indeterminate="true" />
+    }
+    else if (pagina is null || pagina.Items.Count == 0)
+    {
+        <MudText>Todavía no hay ingresos registrados.</MudText>
+    }
+    else
+    {
+        <MudTable Items="pagina.Items" Dense="true" Hover="true">
+            <HeaderContent>
+                <MudTh>Fecha</MudTh>
+                <MudTh>Proveedor</MudTh>
+                <MudTh>Total</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="Fecha">@context.Fecha.ToString("dd/MM/yyyy HH:mm")</MudTd>
+                <MudTd DataLabel="Proveedor">
+                    @context.ProveedorNombre
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                        @(string.Join(", ", context.Detalles.Select(d => $"{d.ProductoNombre} x{d.Cantidad}")))
+                    </MudText>
+                </MudTd>
+                <MudTd DataLabel="Total">$ @context.Total.ToString("N2", Cultura)</MudTd>
+            </RowTemplate>
+        </MudTable>
+        <div class="d-flex justify-center mt-3">
+            <MudPagination Count="@Math.Max(pagina.TotalPages, 1)" Selected="paginaActual" SelectedChanged="CambiarPaginaAsync" />
+        </div>
+    }
+}
+
+@code {
+    private static readonly CultureInfo Cultura = CultureInfo.GetCultureInfo("es-AR");
+    private const int TamanoPagina = 8;
+
+    private class Linea
+    {
+        public int IdProducto { get; set; }
+        public string Nombre { get; set; } = "";
+        public int Cantidad { get; set; }
+        public decimal Costo { get; set; }
+    }
+
+    private List<ProveedorDto> proveedores = new();
+    private List<ProductoDto> productos = new();
+    private List<Linea> lineas = new();
+    private PagedResult<IngresoDto>? pagina;
+    private int paginaActual = 1;
+
+    private int idProveedor;
+    private string? comprobante;
+    private string? observaciones;
+    private int lineaProducto;
+    private int lineaCantidad = 1;
+    private decimal lineaCosto;
+
+    private bool creandoProveedor;
+    private ProveedorGuardarRequest nuevoProveedor = new();
+
+    private bool listo;
+    private bool cargando = true;
+    private bool ocupado;
+    private string? error;
+
+    private decimal TotalLineas => lineas.Sum(l => l.Cantidad * l.Costo);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Auth.InicializarAsync();
+        if (!Auth.EstaLogueado)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+        listo = true;
+        if (!Auth.EsStaff) return;
+
+        try
+        {
+            proveedores = await ProveedorSvc.GetAsync();
+            productos = (await ProductoSvc.GetPaginaAsync(1, 100))?.Items ?? new();
+        }
+        catch (ApiException ex) { error = ex.Message; }
+        await CargarHistorialAsync();
+    }
+
+    private async Task CargarHistorialAsync()
+    {
+        cargando = true;
+        try
+        {
+            pagina = await IngresoSvc.GetPaginaAsync(paginaActual, TamanoPagina);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo cargar el historial.";
+            LogApp.Reportar(ex, "Ingresos");
+        }
+        finally
+        {
+            cargando = false;
+        }
+    }
+
+    private async Task CambiarPaginaAsync(int nueva)
+    {
+        paginaActual = nueva;
+        await CargarHistorialAsync();
+    }
+
+    private async Task CrearProveedorAsync()
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(nuevoProveedor.RazonSocial)) { error = "Escribí la razón social del proveedor."; return; }
+
+        ocupado = true;
+        try
+        {
+            nuevoProveedor.RazonSocial = nuevoProveedor.RazonSocial.Trim();
+            if (string.IsNullOrWhiteSpace(nuevoProveedor.Cuit)) nuevoProveedor.Cuit = null;
+            var creado = await ProveedorSvc.CrearAsync(nuevoProveedor);
+            proveedores = await ProveedorSvc.GetAsync();
+            if (creado is not null) idProveedor = creado.IdProveedor;
+            nuevoProveedor = new ProveedorGuardarRequest();
+            creandoProveedor = false;
+            Snackbar.Add("Proveedor creado.", Severity.Success);
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo crear el proveedor.";
+            LogApp.Reportar(ex, "Ingresos.Proveedor");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+
+    private void AgregarLinea()
+    {
+        error = null;
+        var producto = productos.FirstOrDefault(p => p.IdProducto == lineaProducto);
+        if (producto is null) { error = "Elegí un producto."; return; }
+        if (lineaCantidad < 1) { error = "La cantidad debe ser al menos 1."; return; }
+        if (lineaCosto < 0) { error = "El costo no puede ser negativo."; return; }
+
+        var existente = lineas.FirstOrDefault(l => l.IdProducto == producto.IdProducto);
+        if (existente is not null)
+        {
+            existente.Cantidad += lineaCantidad;
+            existente.Costo = lineaCosto;
+        }
+        else
+        {
+            lineas.Add(new Linea { IdProducto = producto.IdProducto, Nombre = producto.Nombre, Cantidad = lineaCantidad, Costo = lineaCosto });
+        }
+        lineaProducto = 0;
+        lineaCantidad = 1;
+        lineaCosto = 0;
+    }
+
+    private async Task RegistrarAsync()
+    {
+        error = null;
+        if (idProveedor <= 0) { error = "Elegí un proveedor."; return; }
+        if (lineas.Count == 0) { error = "Agregá al menos un producto."; return; }
+
+        ocupado = true;
+        try
+        {
+            await IngresoSvc.CrearAsync(new IngresoCrearRequest
+            {
+                IdProveedor = idProveedor,
+                NumeroComprobante = string.IsNullOrWhiteSpace(comprobante) ? null : comprobante.Trim(),
+                Observaciones = string.IsNullOrWhiteSpace(observaciones) ? null : observaciones.Trim(),
+                Items = lineas.Select(l => new IngresoItemRequest { IdProducto = l.IdProducto, Cantidad = l.Cantidad, CostoUnitario = l.Costo }).ToList()
+            });
+
+            Snackbar.Add("Ingreso registrado. El stock fue actualizado.", Severity.Success);
+            lineas = new();
+            idProveedor = 0;
+            comprobante = null;
+            observaciones = null;
+            productos = (await ProductoSvc.GetPaginaAsync(1, 100))?.Items ?? productos;   // refresca el stock mostrado
+            paginaActual = 1;
+            await CargarHistorialAsync();
+        }
+        catch (ApiException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = "No se pudo registrar el ingreso.";
+            LogApp.Reportar(ex, "Ingresos.Registrar");
+        }
+        finally
+        {
+            ocupado = false;
+        }
+    }
+}
